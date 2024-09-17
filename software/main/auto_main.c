@@ -15,7 +15,6 @@
  */
 
 // TODO:
-// - Set up INT and read only when a conversion is ready
 // - Convert readings into something meaningful
 // - Make a SensorHallEffect API for the main application, with a TMAG5273 implementation of it
 
@@ -33,71 +32,68 @@
  * COMPILE-TIME MACROS
  * -------------------------------------------------------------- */
 
-// Indexes of each of the TMAG5273 sensors in the array gTmag5273.
-#define TMAG5273_LEFT  0
-#define TMAG5273_RIGHT 1
-
-#ifndef I2C_SPEED_TMAG5273_HZ
+#ifndef A_I2C_SPEED_TMAG5273_HZ
 // I2C speed for the TMAG5273.
-# define I2C_SPEED_TMAG5273_HZ 400000
+# define A_I2C_SPEED_TMAG5273_HZ 400000
 #endif
 
 // I2C addresses.
-#define I2C_ADDRESS_TMAG5273_SPARKFUN_DEFAULT 0x22
-#define I2C_ADDRESS_TMAG5273_SPARKFUN_LEFT I2C_ADDRESS_TMAG5273_SPARKFUN_DEFAULT
-#define I2C_ADDRESS_TMAG5273_SPARKFUN_RIGHT (I2C_ADDRESS_TMAG5273_SPARKFUN_DEFAULT + 1)
+#define A_I2C_ADDRESS_TMAG5273_SPARKFUN_DEFAULT 0x22
+#define A_I2C_ADDRESS_TMAG5273_SPARKFUN_LEFT A_I2C_ADDRESS_TMAG5273_SPARKFUN_DEFAULT
+#define A_I2C_ADDRESS_TMAG5273_SPARKFUN_RIGHT (A_I2C_ADDRESS_TMAG5273_SPARKFUN_DEFAULT + 1)
 
 // Register addresses in the TMAG5273 device, see
 // https://www.ti.com/lit/ds/symlink/tmag5273.pdf
-#define TMAG5273_REG_ADDRESS_DEVICE_CONFIG_1  0x00
-#define TMAG5273_REG_ADDRESS_DEVICE_CONFIG_2  0x01
-#define TMAG5273_REG_ADDRESS_SENSOR_CONFIG_1  0x02
-#define TMAG5273_REG_ADDRESS_T_CONFIG         0x07
-#define TMAG5273_REG_ADDRESS_INT_CONFIG_1     0x08
-#define TMAG5273_REG_ADDRESS_I2C_ADDRESS      0x0c
-#define TMAG5273_REG_ADDRESS_CONV_STATUS      0x18
+#define A_TMAG5273_REG_ADDRESS_DEVICE_CONFIG_1  0x00
+#define A_TMAG5273_REG_ADDRESS_DEVICE_CONFIG_2  0x01
+#define A_TMAG5273_REG_ADDRESS_SENSOR_CONFIG_1  0x02
+#define A_TMAG5273_REG_ADDRESS_T_CONFIG         0x07
+#define A_TMAG5273_REG_ADDRESS_INT_CONFIG_1     0x08
+#define A_TMAG5273_REG_ADDRESS_I2C_ADDRESS      0x0c
+#define A_TMAG5273_REG_ADDRESS_CONV_STATUS      0x18
 
 // Static register contents for a TMAG5273 device, DEVICE_CONFIG_1.
-#define TMAG5273_REG_CONTENTS_DEVICE_CONFIG_1_CRC_EN      0x00  // Bit 7
-#define TMAG5273_REG_CONTENTS_DEVICE_CONFIG_1_MAG_TEMPCO  0x00  // Bits 6 and 5
-#define TMAG5273_REG_CONTENTS_DEVICE_CONFIG_1_CONV_AVG    0x00  // Bits 4, 3 and 2
+#define A_TMAG5273_REG_CONTENTS_DEVICE_CONFIG_1_CRC_EN      0x00  // Bit 7
+#define A_TMAG5273_REG_CONTENTS_DEVICE_CONFIG_1_MAG_TEMPCO  0x00  // Bits 6 and 5
+#define A_TMAG5273_REG_CONTENTS_DEVICE_CONFIG_1_CONV_AVG    0x05  // Bits 4, 3 and 2
 
 // Static register contents for a TMAG5273 device, DEVICE_CONFIG_2.
-#define TMAG5273_REG_CONTENTS_DEVICE_CONFIG_2_THR_HYST          0x00  // Bits 7, 6 and 5
-#define TMAG5273_REG_CONTENTS_DEVICE_CONFIG_2_LP_LN             0x00  // Bit 4
-#define TMAG5273_REG_CONTENTS_DEVICE_CONFIG_2_I2C_GLITCH_FILTER 0x00  // Bit 3
-#define TMAG5273_REG_CONTENTS_DEVICE_CONFIG_2_TRIGGER_MODE      0x00  // Bit 2
+#define A_TMAG5273_REG_CONTENTS_DEVICE_CONFIG_2_THR_HYST          0x00  // Bits 7, 6 and 5
+#define A_TMAG5273_REG_CONTENTS_DEVICE_CONFIG_2_LP_LN             0x00  // Bit 4
+#define A_TMAG5273_REG_CONTENTS_DEVICE_CONFIG_2_I2C_GLITCH_FILTER 0x00  // Bit 3
+#define A_TMAG5273_REG_CONTENTS_DEVICE_CONFIG_2_TRIGGER_MODE      0x00  // Bit 2
 
 // Static register contents for a TMAG5273 device, SENSOR_CONFIG_1.
-#define TMAG5273_REG_CONTENTS_SENSOR_CONFIG_1_SLEEPTIME   0x00  // Bits 3 to 0
+#define A_TMAG5273_REG_CONTENTS_SENSOR_CONFIG_1_MAG_CH_EN   A_TMAG5273_MAGNETIC_CHANNEL_Y // Bits 7 to 4
+#define A_TMAG5273_REG_CONTENTS_SENSOR_CONFIG_1_SLEEPTIME   A_TMAG5273_SLEEP_TIME_1_MS    // Bits 3 to 0
 
 // Static register contents for a TMAG5273 device, INT_CONFIG_1.
-#define TMAG5273_REG_CONTENTS_INT_CONFIG_1_THRSLD_INT 0x00  // Bit 6
-#define TMAG5273_REG_CONTENTS_INT_CONFIG_1_INT_STATE  0x00  // Bit 5
-#define TMAG5273_REG_CONTENTS_INT_CONFIG_1_RESERVED   0x00  // Bit 1
-#define TMAG5273_REG_CONTENTS_INT_CONFIG_1_MASK_INTB  0x00  // Bit 0
+#define A_TMAG5273_REG_CONTENTS_INT_CONFIG_1_THRSLD_INT 0x00  // Bit 6
+#define A_TMAG5273_REG_CONTENTS_INT_CONFIG_1_INT_STATE  0x00  // Bit 5
+#define A_TMAG5273_REG_CONTENTS_INT_CONFIG_1_RESERVED   0x00  // Bit 1
+#define A_TMAG5273_REG_CONTENTS_INT_CONFIG_1_MASK_INTB  0x00  // Bit 0
 
 // MCU pins.
-#define PIN_I2C_SCL                           7
-#define PIN_I2C_SDA                           8
-#define PIN_SENSOR_HALL_EFFECT_DISABLE_LEFT   9
-#define PIN_SENSOR_HALL_EFFECT_DISABLE_RIGHT 10
-#define PIN_SENSOR_HALL_EFFECT_INT_LEFT      11
-#define PIN_SENSOR_HALL_EFFECT_INT_RIGHT     12
+#define A_PIN_I2C_SCL                           7
+#define A_PIN_I2C_SDA                           8
+#define A_PIN_SENSOR_HALL_EFFECT_DISABLE_LEFT   9
+#define A_PIN_SENSOR_HALL_EFFECT_DISABLE_RIGHT 10
+#define A_PIN_SENSOR_HALL_EFFECT_INT_LEFT      11
+#define A_PIN_SENSOR_HALL_EFFECT_INT_RIGHT     12
 
-#ifndef READ_TASK_STACK_SIZE_BYTES
+#ifndef A_READ_TASK_STACK_SIZE_BYTES
 // Stack size for the hall effect sensor read task (in bytes).
-# define READ_TASK_STACK_SIZE_BYTES (1024 * 2)
+# define A_READ_TASK_STACK_SIZE_BYTES (1024 * 2)
 #endif
 
-#ifndef READ_TASK_PRIORITY
+#ifndef A_READ_TASK_PRIORITY
 // Priority of the hall effect sensor read task.
-# define READ_TASK_PRIORITY 10
+# define A_READ_TASK_PRIORITY 10
 #endif
 
-#ifndef READ_TASK_EXIT_WAIT_MS
+#ifndef A_READ_TASK_EXIT_WAIT_MS
 // How long to wait for the hall effect sensor read task to exit.
-# define READ_TASK_EXIT_WAIT_MS 1000
+# define A_READ_TASK_EXIT_WAIT_MS 1000
 #endif
 
 /* ----------------------------------------------------------------
@@ -106,57 +102,92 @@
 
 // The operating mode of a TMAG5273 device, see Table 8-4 of the data sheet.
 typedef enum {
-    TMAG5273_OPERATING_MODE_STANDBY_TRIGGERED = 0,
-    TMAG5273_OPERATING_MODE_SLEEP = 1,
-    TMAG5273_OPERATING_MODE_CONTINUOUS = 2,
-    TMAG5273_OPERATING_MODE_WAKE_UP_AND_SLEEP = 3
-} tmag5273OperatingMode_t;
+    A_TMAG5273_OPERATING_MODE_STANDBY_TRIGGERED = 0,
+    A_TMAG5273_OPERATING_MODE_SLEEP = 1,
+    A_TMAG5273_OPERATING_MODE_CONTINUOUS = 2,
+    A_TMAG5273_OPERATING_MODE_WAKE_UP_AND_SLEEP = 3
+} aTmag5273OperatingMode_t;
 
 // The read mode of a TMAG5273 device, see Table 8-3 of the data sheet.
 typedef enum {
-    TMAG5273_READ_MODE_STANDARD_3_BYTE = 0,
-    TMAG5273_READ_MODE_1_BYTE_16_BIT = 1,
-    TMAG5273_READ_MODE_1_BYTE_8_BIT = 2
-} tmag5273ReadMode_t;
+    A_TMAG5273_READ_MODE_STANDARD_3_BYTE = 0,
+    A_TMAG5273_READ_MODE_1_BYTE_16_BIT = 1,
+    A_TMAG5273_READ_MODE_1_BYTE_8_BIT = 2
+} aTmag5273ReadMode_t;
 
 // The magnetic channel combinations for a 1-byte read, see Table 8-5
 // of the data sheet.
 typedef enum {
-    TMAG5273_MAGNETIC_CHANNEL_NONE  = 0,  // the default, just 16-bit temperature if enabled
-    TMAG5273_MAGNETIC_CHANNEL_X     = 1,  // 1 16-bit word, plus 16-bit temperature (first) if enabled
-    TMAG5273_MAGNETIC_CHANNEL_Y     = 2,  // 1 16-bit word, plus 16-bit temperature (first) if enabled
-    TMAG5273_MAGNETIC_CHANNEL_X_Y   = 3,  // 2 16-bit word, plus 16-bit temperature (first) if enabled
-    TMAG5273_MAGNETIC_CHANNEL_Z     = 4,  // 1 16-bit word, plus 16-bit temperature (first) if enabled
-    TMAG5273_MAGNETIC_CHANNEL_Z_X   = 5,  // 2 16-bit words, plus 16-bit temperature (first) if enabled
-    TMAG5273_MAGNETIC_CHANNEL_Y_Z   = 6,  // 2 16-bit words, plus 16-bit temperature (first) if enabled
-    TMAG5273_MAGNETIC_CHANNEL_X_Y_Z = 7,  // 3 16-bit words, plus 16-bit temperature (first) if enabled
-    TMAG5273_MAGNETIC_CHANNEL_X_Y_X = 8,  // 3 16-bit words, plus 16-bit temperature (first) if enabled
-    TMAG5273_MAGNETIC_CHANNEL_Y_X_Y = 9,  // 3 16-bit words, plus 16-bit temperature (first) if enabled
-    TMAG5273_MAGNETIC_CHANNEL_Y_Z_Y = 10, // 3 16-bit words, plus 16-bit temperature (first) if enabled
-    TMAG5273_MAGNETIC_CHANNEL_X_Z_X = 11  // 3 16-bit words, plus 16-bit temperature (first) if enabled
-} tmag5273MagneticChannels_t;
+    A_TMAG5273_MAGNETIC_CHANNEL_NONE  = 0,  // the default, just 16-bit temperature if enabled
+    A_TMAG5273_MAGNETIC_CHANNEL_X     = 1,  // 1 16-bit word, plus 16-bit temperature (first) if enabled
+    A_TMAG5273_MAGNETIC_CHANNEL_Y     = 2,  // 1 16-bit word, plus 16-bit temperature (first) if enabled
+    A_TMAG5273_MAGNETIC_CHANNEL_X_Y   = 3,  // 2 16-bit word, plus 16-bit temperature (first) if enabled
+    A_TMAG5273_MAGNETIC_CHANNEL_Z     = 4,  // 1 16-bit word, plus 16-bit temperature (first) if enabled
+    A_TMAG5273_MAGNETIC_CHANNEL_Z_X   = 5,  // 2 16-bit words, plus 16-bit temperature (first) if enabled
+    A_TMAG5273_MAGNETIC_CHANNEL_Y_Z   = 6,  // 2 16-bit words, plus 16-bit temperature (first) if enabled
+    A_TMAG5273_MAGNETIC_CHANNEL_X_Y_Z = 7,  // 3 16-bit words, plus 16-bit temperature (first) if enabled
+    A_TMAG5273_MAGNETIC_CHANNEL_X_Y_X = 8,  // 3 16-bit words, plus 16-bit temperature (first) if enabled
+    A_TMAG5273_MAGNETIC_CHANNEL_Y_X_Y = 9,  // 3 16-bit words, plus 16-bit temperature (first) if enabled
+    A_TMAG5273_MAGNETIC_CHANNEL_Y_Z_Y = 10, // 3 16-bit words, plus 16-bit temperature (first) if enabled
+    A_TMAG5273_MAGNETIC_CHANNEL_X_Z_X = 11  // 3 16-bit words, plus 16-bit temperature (first) if enabled
+} aTmag5273MagneticChannels_t;
 
-// The interrupt mode of a TMAG5273 device, see Table 8-22 of the data sheet.
+// The gap between measurements in A_TMAG5273_OPERATING_MODE_WAKE_UP_AND_SLEEP,
+// see Table 8-5.
 typedef enum {
-    TMAG5273_INT_MODE_NONE = 0,
-    TMAG5273_INT_MODE_INT = 1,
-    TMAG5273_INT_MODE_INT_EXCEPT_I2C_BUSY = 2,
-    TMAG5273_INT_MODE_SCL = 3,
-    TMAG5273_INT_MODE_SCL_EXCEPT_I2C_BUSY = 4
-} tmag5273IntMode_t;
+    A_TMAG5273_SLEEP_TIME_1_MS = 0,
+    A_TMAG5273_SLEEP_TIME_5_MS = 1,
+    A_TMAG5273_SLEEP_TIME_10_MS = 2,
+    A_TMAG5273_SLEEP_TIME_15_MS = 3,
+    A_TMAG5273_SLEEP_TIME_20_MS = 4,
+    A_TMAG5273_SLEEP_TIME_30_MS = 5,
+    A_TMAG5273_SLEEP_TIME_50_MS = 6,
+    A_TMAG5273_SLEEP_TIME_100_MS = 7,
+    A_TMAG5273_SLEEP_TIME_500_MS = 8,
+    A_TMAG5273_SLEEP_TIME_1000_MS = 9,
+    A_TMAG5273_SLEEP_TIME_2000_MS = 10,
+    A_TMAG5273_SLEEP_TIME_5000_MS = 11,
+    A_TMAG5273_SLEEP_TIME_20000_MS = 12
+} aTmag5283SleepTime_t;
+
+// The interrupt mode of a TMAG5273 device, see Table 8-11 of the data sheet.
+typedef enum {
+    A_TMAG5273_INT_MODE_NONE = 0,
+    A_TMAG5273_INT_MODE_INT = 1,
+    A_TMAG5273_INT_MODE_INT_EXCEPT_I2C_BUSY = 2,
+    A_TMAG5273_INT_MODE_SCL = 3,
+    A_TMAG5273_INT_MODE_SCL_EXCEPT_I2C_BUSY = 4
+} aTmag5273IntMode_t;
+
+// The hall effect sensor directions; these are hard
+// code as they also reflect the index into the
+// gTmag5273 array.
+typedef enum {
+    A_SENSOR_HALL_EFFECT_DIRECTION_LEFT = 0,
+    A_SENSOR_HALL_EFFECT_DIRECTION_RIGHT = 1
+} aSensorHallEffectDirection_t;
+
+// Function signature of a hall effect sensor read callback.
+typedef void (*aSensorHallEffectCallbackRead_t) (aSensorHallEffectDirection_t direction,
+                                                 int16_t reading,
+                                                 uint8_t conversionStatus,
+                                                 void *pParameter);
 
 // Structure defining a TMAG5273.
 typedef struct {
     uint8_t i2cAddress;
     char *pNameStr;
+    aSensorHallEffectDirection_t direction;
     i2c_master_dev_handle_t devHandle;
     gpio_num_t pinInt;
     SemaphoreHandle_t readTaskMutex;
     TaskHandle_t readTask;
     SemaphoreHandle_t readSemaphore;
     volatile bool readTaskAbort;
-    tmag5273ReadMode_t readMode;
-} tmag5273Device_t;
+    aTmag5273ReadMode_t readMode;
+    aSensorHallEffectCallbackRead_t pCallbackRead;
+    void *pCallbackReadParameter;
+} aTmag5273Device_t;
 
 /* ----------------------------------------------------------------
  * VARIABLES
@@ -166,20 +197,40 @@ typedef struct {
 static const i2c_master_bus_config_t gI2cMasterBusConfig = {
     .clk_source = I2C_CLK_SRC_DEFAULT,
     .i2c_port = 0,
-    .scl_io_num = PIN_I2C_SCL,
-    .sda_io_num = PIN_I2C_SDA,
+    .scl_io_num = A_PIN_I2C_SCL,
+    .sda_io_num = A_PIN_I2C_SDA,
     .glitch_ignore_cnt = 7,
     .flags.enable_internal_pullup = false
 };
 
+// Mutex to arbitrate I2C activity.
+static SemaphoreHandle_t gI2cMutex = NULL;
+
 // Storage for the TMAG5273 hall effect sensors.
-static tmag5273Device_t gTmag5273[] = {{.i2cAddress = I2C_ADDRESS_TMAG5273_SPARKFUN_LEFT,
-                                        .pNameStr = "LEFT"},
-                                       {.i2cAddress = I2C_ADDRESS_TMAG5273_SPARKFUN_RIGHT,
-                                        .pNameStr = "RIGHT"}};
+static aTmag5273Device_t gTmag5273[] = {{.i2cAddress = A_I2C_ADDRESS_TMAG5273_SPARKFUN_LEFT,
+                                         .pNameStr = "LEFT",
+                                         .direction = A_SENSOR_HALL_EFFECT_DIRECTION_LEFT},
+                                        {.i2cAddress = A_I2C_ADDRESS_TMAG5273_SPARKFUN_RIGHT,
+                                         .pNameStr = "RIGHT",
+                                         .direction = A_SENSOR_HALL_EFFECT_DIRECTION_RIGHT}};
 
 // Keep track of whether the ISR service is already installed.
 static bool gIsrServiceInstalled = false;
+
+// How many times callbackRead() has been called.
+static size_t gCallbackReadCount = 0;
+
+// Storage for the conversion status of each reading, left-hand TMAG5273.
+static uint8_t gConversionStatusLeft[1000];
+
+// Storage for the conversion status of each reading, right-hand TMAG5273.
+static uint8_t gConversionStatusRight[1000];
+
+// How many entries have been added to gConversionStatusLeft.
+static size_t gConversationStatusCountLeft = 0;
+
+// How many entries have been added to gConversionStatusRight.
+static size_t gConversationStatusCountRight = 0;
 
 /* ----------------------------------------------------------------
  * STATIC FUNCTIONS: MISC
@@ -213,10 +264,33 @@ static esp_err_t pinOutputSet(gpio_num_t pin, int32_t level)
     if (espErr == ESP_OK) {
         espErr = gpio_config(&gpioConfig);
         if (espErr != ESP_OK) {
-            printf("Unable to configure pin %d as an output (error 0x%02x)!\n", (int) pin, espErr);
+            printf("A_SENSOR_HALL_EFFECT: unable to configure pin %d as an output"
+                   " (error 0x%02x)!\n", (int) pin, espErr);
         }
     } else {
-        printf("Unable to set pin %d to level %d (error 0x%02x)!\n", (int) pin, (int) level, espErr);
+        printf("A_SENSOR_HALL_EFFECT: unable to set pin %d to level %d"
+               " (error 0x%02x)!\n", (int) pin, (int) level, espErr);
+    }
+
+    return espErr;
+}
+
+// Set an MCU pin as an interrupt source.
+static esp_err_t pinIntSet(gpio_num_t pin)
+{
+    esp_err_t espErr;
+    gpio_config_t gpioConfig = {
+        .intr_type = GPIO_INTR_NEGEDGE,
+        .mode = GPIO_MODE_INPUT,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .pull_up_en = GPIO_PULLUP_ENABLE,
+        .pin_bit_mask =  1ULL << pin
+    };
+
+    espErr = gpio_config(&gpioConfig);
+    if (espErr != ESP_OK) {
+        printf("A_SENSOR_HALL_EFFECT: unable to configure pin %d as an"
+               " interrupt source (error 0x%02x)!\n", (int) pin, espErr);
     }
 
     return espErr;
@@ -231,24 +305,31 @@ static esp_err_t i2cAddDevice(i2c_master_bus_handle_t busHandle,
                               uint8_t i2cAddress,
                               i2c_master_dev_handle_t *pDevHandle)
 {
-    esp_err_t espErr;
+    esp_err_t espErr = ESP_ERR_INVALID_STATE;
     i2c_device_config_t i2cDeviceConfig = {
         .dev_addr_length = I2C_ADDR_BIT_LEN_7,
         .device_address = i2cAddress,
-        .scl_speed_hz = I2C_SPEED_TMAG5273_HZ
+        .scl_speed_hz = A_I2C_SPEED_TMAG5273_HZ
     };
 
-    espErr = i2c_master_probe(busHandle, i2cAddress, -1);
-    if (espErr == ESP_OK) {
-        if (pDevHandle != NULL) {
-            espErr = i2c_master_bus_add_device(busHandle, &i2cDeviceConfig, pDevHandle);
-            if (espErr != ESP_OK) {
-                printf("Unable to add TMAG5273 at address %d as an I2C device (0x%02x)!\n",
-                       i2cAddress, espErr);
+    if ((gI2cMutex != NULL) &&
+        (xSemaphoreTake(gI2cMutex,
+                        (TickType_t) portMAX_DELAY) == pdPASS)) {
+        espErr = i2c_master_probe(busHandle, i2cAddress, -1);
+        if (espErr == ESP_OK) {
+            if (pDevHandle != NULL) {
+                espErr = i2c_master_bus_add_device(busHandle, &i2cDeviceConfig, pDevHandle);
+                if (espErr != ESP_OK) {
+                    printf("A_SENSOR_HALL_EFFECT: unable to add TMAG5273 at address %d"
+                           " as an I2C device (0x%02x)!\n", i2cAddress, espErr);
+                }
             }
+        } else {
+            printf("A_SENSOR_HALL_EFFECT: unable to find a TMAG5273 at"
+                   " I2C address 0x%02x (0x%02x)!\n", i2cAddress, espErr);
         }
-    } else {
-        printf("Unable to find a TMAG5273 at I2C address 0x%02x (0x%02x)!\n", i2cAddress, espErr);
+
+        xSemaphoreGive(gI2cMutex);
     }
 
     return espErr;
@@ -258,27 +339,36 @@ static esp_err_t i2cAddDevice(i2c_master_bus_handle_t busHandle,
 static esp_err_t i2cWriteTmag5273(i2c_master_dev_handle_t devHandle, uint8_t reg,
                                   const uint8_t *pBuffer, size_t bufferLength)
 {
-    esp_err_t espErr = ESP_OK;
+    esp_err_t espErr = ESP_ERR_INVALID_STATE;
     uint8_t writeBuffer[16];
     size_t writeBufferLength = 0;
 
-    writeBuffer[0] = reg;
-    writeBufferLength++;
-    if (pBuffer != NULL) {
-        if (bufferLength > sizeof(writeBuffer) - writeBufferLength) {
-            espErr = ESP_ERR_INVALID_SIZE;
-        } else {
-            memcpy(&(writeBuffer[writeBufferLength]), pBuffer, bufferLength);
-            writeBufferLength += bufferLength;
-        }
-    }
+    if ((gI2cMutex != NULL) &&
+        (xSemaphoreTake(gI2cMutex,
+                        (TickType_t) portMAX_DELAY) == pdPASS)) {
+        espErr = ESP_OK;
 
-    if (espErr == ESP_OK) {
-        espErr = i2c_master_transmit(devHandle, writeBuffer, writeBufferLength, -1);
-        if (espErr != ESP_OK) {
-            printf("i2c_master_transmit() of %d byte(s) to TMAG5273 register 0x%02x"
-                   " returned error 0x%02x!\n", bufferLength, reg, espErr);
+        writeBuffer[0] = reg;
+        writeBufferLength++;
+        if (pBuffer != NULL) {
+            if (bufferLength > sizeof(writeBuffer) - writeBufferLength) {
+                espErr = ESP_ERR_INVALID_SIZE;
+            } else {
+                memcpy(&(writeBuffer[writeBufferLength]), pBuffer, bufferLength);
+                writeBufferLength += bufferLength;
+            }
         }
+
+        if (espErr == ESP_OK) {
+            espErr = i2c_master_transmit(devHandle, writeBuffer, writeBufferLength, -1);
+            if (espErr != ESP_OK) {
+                printf("A_SENSOR_HALL_EFFECT: i2c_master_transmit() of %d byte(s) to"
+                       " TMAG5273 register 0x%02x returned error 0x%02x!\n",
+                       bufferLength, reg, espErr);
+            }
+        }
+
+        xSemaphoreGive(gI2cMutex);
     }
 
     return espErr;
@@ -286,35 +376,41 @@ static esp_err_t i2cWriteTmag5273(i2c_master_dev_handle_t devHandle, uint8_t reg
 
 // Read 16-bit words from a TMAG5273; bufferLength is in bytes, not words.
 // Before this is called the read mode (see tmag5273ReadModeSet()) must be set
-// to TMAG5273_READ_MODE_1_BYTE_16_BIT and the channels that will be read must
-// have been selected by setting MAG_CH_EN (in TMAG5273_REG_ADDRESS_SENSOR_CONFIG_1,
+// to A_TMAG5273_READ_MODE_1_BYTE_16_BIT and the channels that will be read must
+// have been selected by setting MAG_CH_EN (in A_TMAG5273_REG_ADDRESS_SENSOR_CONFIG_1,
 // see tmag5273MagneticChannelSet()) and, optionally, enabling T_CH_EN
-// (in TMAG5273_REG_ADDRESS_T_CONFIG); this will dictate how many 16-bit words are
+// (in A_TMAG5273_REG_ADDRESS_T_CONFIG); this will dictate how many 16-bit words are
 // returned (up to four), with a conversion status byte tacked on the end.
 static esp_err_t i2cReadTmag5273Int16(i2c_master_dev_handle_t devHandle,
                                       int16_t *pBufferInt16, size_t bufferLength,
                                       uint8_t *pConversionStatus)
 {
-    esp_err_t espErr = ESP_OK;
+    esp_err_t espErr = ESP_ERR_INVALID_STATE;
     uint8_t buffer[4 * 2 + 1];  // Up to four 16-bit words plus a conversion status byte
     size_t readLength;
 
-   if (bufferLength > sizeof(buffer) - 1) {
-       bufferLength = sizeof(buffer) - 1;
-   }
-    readLength = bufferLength + 1;
+    if ((gI2cMutex != NULL) &&
+        (xSemaphoreTake(gI2cMutex,
+                        (TickType_t) portMAX_DELAY) == pdPASS)) {
+        if (bufferLength > sizeof(buffer) - 1) {
+           bufferLength = sizeof(buffer) - 1;
+        }
+        readLength = bufferLength + 1;
 
-    espErr = i2c_master_receive(devHandle, buffer, readLength, -1);
-    if (espErr == ESP_OK) {
-        if (pBufferInt16 != NULL) {
-            memcpy(pBufferInt16, buffer, bufferLength );
+        espErr = i2c_master_receive(devHandle, buffer, readLength, -1);
+        if (espErr == ESP_OK) {
+            if (pBufferInt16 != NULL) {
+                memcpy(pBufferInt16, buffer, bufferLength);
+            }
+            if (pConversionStatus != NULL) {
+                *pConversionStatus = buffer[bufferLength];
+            }
+        } else {
+            printf("A_SENSOR_HALL_EFFECT: i2c_master_receive() of %d byte(s) "
+                   " returned error 0x%02x!\n", readLength, espErr);
         }
-        if (pConversionStatus != NULL) {
-            *pConversionStatus = buffer[bufferLength];
-        }
-    } else {
-        printf("i2c_master_receive() of %d byte(s)  returned error 0x%02x!\n",
-               readLength, espErr);
+
+        xSemaphoreGive(gI2cMutex);
     }
 
     return espErr;
@@ -325,70 +421,75 @@ static esp_err_t i2cReadTmag5273Int16(i2c_master_dev_handle_t devHandle,
  * -------------------------------------------------------------- */
 
 // Clear the power on reset bit of a TMAG5273.
-static esp_err_t tmag5273PowerOnResetClear(i2c_master_dev_handle_t devHandle)
+static esp_err_t tmag5273PowerOnResetClear(aTmag5273Device_t *pTmag5273Device)
 {
     uint8_t writeBuffer[] = {0x10};  // Bit 4 is POR
 
-    return i2cWriteTmag5273(devHandle, TMAG5273_REG_ADDRESS_CONV_STATUS,
+    return i2cWriteTmag5273(pTmag5273Device->devHandle,
+                            A_TMAG5273_REG_ADDRESS_CONV_STATUS,
                             writeBuffer, sizeof(writeBuffer));
 }
 
 // Set the read mode of a TMAG5273.
-static esp_err_t tmag5273ReadModeSet(tmag5273Device_t *pTmag5273,
-                                     tmag5273ReadMode_t mode)
+static esp_err_t tmag5273ReadModeSet(aTmag5273Device_t *pTmag5273Device,
+                                     aTmag5273ReadMode_t readMode)
 {
     esp_err_t espErr;
-    uint8_t writeBuffer[] = {(TMAG5273_REG_CONTENTS_DEVICE_CONFIG_1_CRC_EN << 7)     |
-                             (TMAG5273_REG_CONTENTS_DEVICE_CONFIG_1_MAG_TEMPCO << 5) |
-                             (TMAG5273_REG_CONTENTS_DEVICE_CONFIG_1_CONV_AVG << 2)   |
-                             (mode & 0x03)};
+    uint8_t writeBuffer[] = {(A_TMAG5273_REG_CONTENTS_DEVICE_CONFIG_1_CRC_EN << 7)     |
+                             (A_TMAG5273_REG_CONTENTS_DEVICE_CONFIG_1_MAG_TEMPCO << 5) |
+                             (A_TMAG5273_REG_CONTENTS_DEVICE_CONFIG_1_CONV_AVG << 2)   |
+                             readMode};
 
-    espErr = i2cWriteTmag5273(pTmag5273->devHandle, TMAG5273_REG_ADDRESS_DEVICE_CONFIG_1,
+    espErr = i2cWriteTmag5273(pTmag5273Device->devHandle,
+                              A_TMAG5273_REG_ADDRESS_DEVICE_CONFIG_1,
                               writeBuffer, sizeof(writeBuffer));
     if (espErr == ESP_OK) {
-        pTmag5273->readMode = mode;
+        pTmag5273Device->readMode = readMode;
     }
+
     return espErr;
 }
 
 // Set the magnetic channels enabled for the 1-byte read mode of a TMAG5273.
-static esp_err_t tmag5273MagneticChannelSet(i2c_master_dev_handle_t devHandle,
-                                            tmag5273MagneticChannels_t channels)
+static esp_err_t tmag5273MagneticChannelSet(aTmag5273Device_t *pTmag5273Device,
+                                            aTmag5273MagneticChannels_t magChEn)
 {
-    uint8_t writeBuffer[] = {((channels & 0x0F) << 4) |
-                             (TMAG5273_REG_CONTENTS_SENSOR_CONFIG_1_SLEEPTIME)};
+    uint8_t writeBuffer[] = {(magChEn << 4) | A_TMAG5273_REG_CONTENTS_SENSOR_CONFIG_1_SLEEPTIME};
 
-    return i2cWriteTmag5273(devHandle, TMAG5273_REG_ADDRESS_SENSOR_CONFIG_1,
+    return i2cWriteTmag5273(pTmag5273Device->devHandle,
+                            A_TMAG5273_REG_ADDRESS_SENSOR_CONFIG_1,
                             writeBuffer, sizeof(writeBuffer));
 }
 
 // Set the operating mode of a TMAG5273.
-static esp_err_t tmag5273OperatingModeSet(i2c_master_dev_handle_t devHandle,
-                                          tmag5273OperatingMode_t mode)
+static esp_err_t tmag5273OperatingModeSet(aTmag5273Device_t *pTmag5273Device,
+                                          aTmag5273OperatingMode_t operatingMode)
 {
-    uint8_t writeBuffer[] = {(TMAG5273_REG_CONTENTS_DEVICE_CONFIG_2_THR_HYST << 5)          |
-                             (TMAG5273_REG_CONTENTS_DEVICE_CONFIG_2_LP_LN << 4)             |
-                             (TMAG5273_REG_CONTENTS_DEVICE_CONFIG_2_I2C_GLITCH_FILTER << 3) |
-                             (TMAG5273_REG_CONTENTS_DEVICE_CONFIG_2_TRIGGER_MODE << 2)      |
-                             (mode & 0x02)};
+    uint8_t writeBuffer[] = {(A_TMAG5273_REG_CONTENTS_DEVICE_CONFIG_2_THR_HYST << 5)          |
+                             (A_TMAG5273_REG_CONTENTS_DEVICE_CONFIG_2_LP_LN << 4)             |
+                             (A_TMAG5273_REG_CONTENTS_DEVICE_CONFIG_2_I2C_GLITCH_FILTER << 3) |
+                             (A_TMAG5273_REG_CONTENTS_DEVICE_CONFIG_2_TRIGGER_MODE << 2)      |
+                             operatingMode};
 
-    return i2cWriteTmag5273(devHandle, TMAG5273_REG_ADDRESS_DEVICE_CONFIG_2,
+    return i2cWriteTmag5273(pTmag5273Device->devHandle,
+                            A_TMAG5273_REG_ADDRESS_DEVICE_CONFIG_2,
                             writeBuffer, sizeof(writeBuffer));
 }
 
 // Set the interrupt mode of a TMAG5273.
-static esp_err_t tmag5273IntModeSet(i2c_master_dev_handle_t devHandle,
-                                    tmag5273IntMode_t mode)
+static esp_err_t tmag5273IntModeSet(aTmag5273Device_t *pTmag5273Device,
+                                    aTmag5273IntMode_t intMode)
 {
     // The 1 in bit 7 means assert an interrupt when results are available
-    uint8_t writeBuffer[] = {(0x01 << 7)                                           |
-                             (TMAG5273_REG_CONTENTS_INT_CONFIG_1_THRSLD_INT << 6)  |
-                             (TMAG5273_REG_CONTENTS_INT_CONFIG_1_INT_STATE << 5)   |
-                             ((mode & 0x07) << 2)                                  |
-                             (TMAG5273_REG_CONTENTS_INT_CONFIG_1_RESERVED << 1)    |
-                             TMAG5273_REG_CONTENTS_INT_CONFIG_1_MASK_INTB};
+    uint8_t writeBuffer[] = {(0x01 << 7)                                            |
+                             (A_TMAG5273_REG_CONTENTS_INT_CONFIG_1_THRSLD_INT << 6) |
+                             (A_TMAG5273_REG_CONTENTS_INT_CONFIG_1_INT_STATE << 5)  |
+                             (intMode << 2)                                         |
+                             (A_TMAG5273_REG_CONTENTS_INT_CONFIG_1_RESERVED << 1)   |
+                             A_TMAG5273_REG_CONTENTS_INT_CONFIG_1_MASK_INTB};
 
-    return i2cWriteTmag5273(devHandle, TMAG5273_REG_ADDRESS_INT_CONFIG_1,
+    return i2cWriteTmag5273(pTmag5273Device->devHandle,
+                             A_TMAG5273_REG_ADDRESS_INT_CONFIG_1,
                             writeBuffer, sizeof(writeBuffer));
 }
 
@@ -397,12 +498,12 @@ static esp_err_t tmag5273IntModeSet(i2c_master_dev_handle_t devHandle,
  * -------------------------------------------------------------- */
 
 // ISR handler function for the TMAG5273 hall effect sensor.
-// pParameter must be a pointer to a tmag5273Device_t structure.
+// pParameter must be a pointer to an aTmag5273Device_t structure.
 static void isrHandler(void *pParameter)
 {
-    const tmag5273Device_t *pTmag5273Device = (const tmag5273Device_t *) pParameter;
+    const aTmag5273Device_t *pTmag5273Device = (const aTmag5273Device_t *) pParameter;
     BaseType_t mustYield = false;
- 
+
     // Give the semaphore to indicate that there is something
     // for readTask() to read
     xSemaphoreGiveFromISR(pTmag5273Device->readSemaphore, &mustYield);
@@ -413,29 +514,39 @@ static void isrHandler(void *pParameter)
 }
 
 // The read task for a TMAG5273 hall effect sensor.
-// pParameter must be a pointer to a tmag5273Device_t structure.
+// pParameter must be a pointer to an aTmag5273Device_t structure.
 static void readTask(void *pParameter)
 {
-    const tmag5273Device_t *pTmag5273Device = (const tmag5273Device_t *) pParameter;
+    const aTmag5273Device_t *pTmag5273Device = (const aTmag5273Device_t *) pParameter;
+    int16_t bufferInt16;
+    uint8_t conversionStatus;
 
     // Take the task mutex to signal that we are running
     if ((pTmag5273Device->readTaskMutex != NULL) &&
         (xSemaphoreTake(pTmag5273Device->readTaskMutex,
                         (TickType_t) portMAX_DELAY) == pdPASS)) {
 
-        printf("Started reading %s hall effect sensor.\n", pTmag5273Device->pNameStr);
+        printf("A_SENSOR_HALL_EFFECT: started reading %s hall effect sensor.\n",
+               pTmag5273Device->pNameStr);
         // While we haven't been asked to abort...
         while (!pTmag5273Device->readTaskAbort) {
             // See if the interrupt has signalled anything for us
             if (xSemaphoreTake(pTmag5273Device->readSemaphore,
                                100 / portTICK_PERIOD_MS) == pdTRUE) {
-                // There is data: read it
-                // TODO: put it somewhere
-                i2cReadTmag5273Int16(pTmag5273Device->devHandle, NULL, 0, NULL);
+                if ((i2cReadTmag5273Int16(pTmag5273Device->devHandle,
+                                          &bufferInt16, sizeof(bufferInt16),
+                                          &conversionStatus) == ESP_OK) &&
+                    (pTmag5273Device->pCallbackRead != NULL)) {
+                    // Pass the data to the read callback
+                    pTmag5273Device->pCallbackRead(pTmag5273Device->direction,
+                                                   bufferInt16, conversionStatus,
+                                                   pTmag5273Device->pCallbackReadParameter);
+                }
             }
         }
 
-        printf("Stopped reading %s hall effect sensor.\n", pTmag5273Device->pNameStr);
+        printf("A_SENSOR_HALL_EFFECT: stopped reading %s hall effect sensor.\n",
+               pTmag5273Device->pNameStr);
         // Give the task mutex to indicate that we are no longer running
         xSemaphoreGive(pTmag5273Device->readTaskMutex);
     }
@@ -445,7 +556,7 @@ static void readTask(void *pParameter)
 }
 
 // Stop a TMAG5273 read (interrupt, semaphore, task and associated mutex).
-static void readStop(tmag5273Device_t *pTmag5273Device)
+static void readStop(aTmag5273Device_t *pTmag5273Device)
 {
     int64_t startTimeMs;
 
@@ -461,7 +572,7 @@ static void readStop(tmag5273Device_t *pTmag5273Device)
         if (pTmag5273Device->readTaskMutex != NULL) {
             // Now wait for the read task to exit in its own time
             startTimeMs = timeSinceBootMs();
-            while ((timeSinceBootMs() < startTimeMs + READ_TASK_EXIT_WAIT_MS) &&
+            while ((timeSinceBootMs() < startTimeMs + A_READ_TASK_EXIT_WAIT_MS) &&
                    (xSemaphoreTake(pTmag5273Device->readTaskMutex,
                                    100 / portTICK_PERIOD_MS) != pdTRUE)) {
                 // Waiting...
@@ -473,9 +584,9 @@ static void readStop(tmag5273Device_t *pTmag5273Device)
                 // again below
                 pTmag5273Device->readTask = NULL;
             } else {
-                printf("%s hall effect sensor read task did not exit "
-                       " (waited about %lld ms)!\n", pTmag5273Device->pNameStr,
-                       timeSinceBootMs() - startTimeMs);
+                printf("A_SENSOR_HALL_EFFECT: %s hall effect sensor read task"
+                       " did not exit (waited about %lld ms)!\n",
+                       pTmag5273Device->pNameStr, timeSinceBootMs() - startTimeMs);
             }
         }
     }
@@ -501,103 +612,128 @@ static void readStop(tmag5273Device_t *pTmag5273Device)
 
     // Reset the abort flag so that we can use the structure again
     pTmag5273Device->readTaskAbort = false;
-    // Device goes sleepy, hopefully
-    tmag5273OperatingModeSet(pTmag5273Device->devHandle, TMAG5273_OPERATING_MODE_SLEEP);
+    // Device back to standby
+    tmag5273OperatingModeSet(pTmag5273Device,
+                             A_TMAG5273_OPERATING_MODE_STANDBY_TRIGGERED);
+
+    // Forget the read callback and its parameter
+    pTmag5273Device->pCallbackRead = NULL;
+    pTmag5273Device->pCallbackReadParameter = NULL;
 }
 
 // Initialise the I2C addresses of the hall effect sensors.
-static esp_err_t sensorHallEffectInit(i2c_master_bus_handle_t busHandle,
-                                      gpio_num_t pinDisableLeft,
-                                      gpio_num_t pinDisableRight)
+static esp_err_t aSensorHallEffectInit(i2c_master_bus_handle_t busHandle,
+                                       gpio_num_t pinDisableLeft,
+                                       gpio_num_t pinDisableRight)
 {
-    esp_err_t espErr;
+    esp_err_t espErr = ESP_ERR_NO_MEM;
     uint8_t buffer[1];
     i2c_master_dev_handle_t devHandle;
     i2c_device_config_t i2cDeviceConfig = {
         .dev_addr_length = I2C_ADDR_BIT_LEN_7,
-        .device_address = I2C_ADDRESS_TMAG5273_SPARKFUN_DEFAULT,
-        .scl_speed_hz = I2C_SPEED_TMAG5273_HZ
+        .device_address = A_I2C_ADDRESS_TMAG5273_SPARKFUN_DEFAULT,
+        .scl_speed_hz = A_I2C_SPEED_TMAG5273_HZ
     };
 
-    // Enable just the right-hand hall effect sensor to begin with
-    espErr = pinOutputSet(pinDisableRight, 0);
-    if (espErr == ESP_OK) {
-        printf("Right-hand TMAG5273 hall effect sensor enabled.\n");
-        // Disable the left-hand hall effect sensor while we check, and if necessary set,
-        // the I2C address of the right-hand one
-        espErr = pinOutputSet(pinDisableLeft, 1);
-        if (espErr == ESP_OK) {
-            delayMs(10);
-            espErr = i2c_master_probe(busHandle, I2C_ADDRESS_TMAG5273_SPARKFUN_RIGHT, -1);
-            if (espErr == ESP_OK) {
-                printf("Found TMAG5273 already at I2C address 0x%02x.\n",
-                        I2C_ADDRESS_TMAG5273_SPARKFUN_RIGHT);
-            } else {
-                espErr = i2c_master_probe(busHandle, i2cDeviceConfig.device_address, -1);
-                if (espErr == ESP_OK) {
-                    printf("Found a TMAG5273 at I2C address 0x%02x, assumed to be the"
-                           " right-hand hall effect sensor.\n", i2cDeviceConfig.device_address);
-                    espErr = i2c_master_bus_add_device(busHandle, &i2cDeviceConfig, &devHandle);
-                    if (espErr == ESP_OK) {
-                        printf("Changing I2C address of this TMAG5273 to 0x%02x...\n",
-                               I2C_ADDRESS_TMAG5273_SPARKFUN_RIGHT);
-                        buffer[0] = ((I2C_ADDRESS_TMAG5273_SPARKFUN_RIGHT) << 1) | 0x01;
-                        espErr = i2cWriteTmag5273(devHandle, TMAG5273_REG_ADDRESS_I2C_ADDRESS, buffer, 1);
-                        if (espErr == ESP_OK) {
-                            espErr = i2c_master_probe(busHandle, I2C_ADDRESS_TMAG5273_SPARKFUN_RIGHT, -1);
-                            if (espErr != ESP_OK) {
-                                printf("Unable to find a TMAG5273 at I2C address 0x%02x after"
-                                       " I2C address change (0x%02x)!\n",
-                                       I2C_ADDRESS_TMAG5273_SPARKFUN_RIGHT, espErr);
-                            }
-                        } else {
-                            printf("Unable to change I2C address of TMAG5273 (0x%02x)!\n", espErr);
-                        }
-                        i2c_master_bus_rm_device(devHandle);
-                    }
-                } else {
-                    printf("Unable to find any TMAG5273 devices (I2C address 0x%02x) (0x%02x)!\n",
-                           i2cDeviceConfig.device_address, espErr);
-                }
-            }
+    // Create a mutex to arbitrate I2C activity
+    if (gI2cMutex == NULL) {
+        gI2cMutex = xSemaphoreCreateMutex();
+        if (gI2cMutex != NULL) {
+            espErr = ESP_OK;
+        }
+    }
 
-            // Should now have both TMAG5273 devices on different I2C addresses
+    if (espErr == ESP_OK) {
+        // Set both disables in order to reset both sensors
+        pinOutputSet(pinDisableLeft, 1);
+        pinOutputSet(pinDisableRight, 1);
+        delayMs(10);
+        // Enable just the right-hand hall effect sensor to begin with
+        espErr = pinOutputSet(pinDisableRight, 0);
+        if (espErr == ESP_OK) {
+            printf("A_SENSOR_HALL_EFFECT: right-hand TMAG5273 hall effect sensor enabled.\n");
+            // Disable the left-hand hall effect sensor while we check, and if necessary set,
+            // the I2C address of the right-hand one
+            espErr = pinOutputSet(pinDisableLeft, 1);
             if (espErr == ESP_OK) {
-                espErr = pinOutputSet(pinDisableLeft, 0);
+                delayMs(10);
+                espErr = i2c_master_probe(busHandle, A_I2C_ADDRESS_TMAG5273_SPARKFUN_RIGHT, -1);
                 if (espErr == ESP_OK) {
-                    printf("Left-hand TMAG5273 hall effect sensor enabled.\n");
-                    delayMs(10);
+                    printf("A_SENSOR_HALL_EFFECT: found TMAG5273 already at I2C address 0x%02x.\n",
+                            A_I2C_ADDRESS_TMAG5273_SPARKFUN_RIGHT);
+                } else {
+                    espErr = i2c_master_probe(busHandle, i2cDeviceConfig.device_address, -1);
+                    if (espErr == ESP_OK) {
+                        printf("A_SENSOR_HALL_EFFECT: found a TMAG5273 at I2C address 0x%02x,"
+                               " assumed to be the right-hand hall effect sensor.\n",
+                               i2cDeviceConfig.device_address);
+                        espErr = i2c_master_bus_add_device(busHandle, &i2cDeviceConfig, &devHandle);
+                        if (espErr == ESP_OK) {
+                            printf("A_SENSOR_HALL_EFFECT: changing I2C address of this TMAG5273"
+                                   " to 0x%02x...\n", A_I2C_ADDRESS_TMAG5273_SPARKFUN_RIGHT);
+                            buffer[0] = ((A_I2C_ADDRESS_TMAG5273_SPARKFUN_RIGHT) << 1) | 0x01;
+                            espErr = i2cWriteTmag5273(devHandle, A_TMAG5273_REG_ADDRESS_I2C_ADDRESS, buffer, 1);
+                            if (espErr == ESP_OK) {
+                                espErr = i2c_master_probe(busHandle, A_I2C_ADDRESS_TMAG5273_SPARKFUN_RIGHT, -1);
+                                if (espErr != ESP_OK) {
+                                    printf("A_SENSOR_HALL_EFFECT: unable to find a TMAG5273 at"
+                                           " I2C address 0x%02x after I2C address change (0x%02x)!\n",
+                                           A_I2C_ADDRESS_TMAG5273_SPARKFUN_RIGHT, espErr);
+                                }
+                            } else {
+                                printf("A_SENSOR_HALL_EFFECT: unable to change I2C address of"
+                                       " TMAG5273 (0x%02x)!\n", espErr);
+                            }
+                            i2c_master_bus_rm_device(devHandle);
+                        }
+                    } else {
+                        printf("A_SENSOR_HALL_EFFECT: unable to find any TMAG5273 devices"
+                               " (I2C address 0x%02x) (0x%02x)!\n", i2cDeviceConfig.device_address,
+                               espErr);
+                    }
                 }
+
+                // Should now have both TMAG5273 devices on different I2C addresses
+                if (espErr == ESP_OK) {
+                    espErr = pinOutputSet(pinDisableLeft, 0);
+                    if (espErr == ESP_OK) {
+                        printf("A_SENSOR_HALL_EFFECT: left-hand TMAG5273 hall effect sensor enabled.\n");
+                        delayMs(10);
+                    }
+                }
+            } else {
+                printf("A_SENSOR_HALL_EFFECT: unable to disable the left-hand hall effect"
+                       " sensor (disable pin %d) in order to configure the I2C address of"
+                       " the right-hand one (0x%02x)!\n", pinDisableLeft, espErr);
             }
         } else {
-            printf("Unable to disable the left-hand hall effect sensor (disable pin %d)"
-                   " in order to configure the I2C address of the right-hand one (0x%02x)!\n",
-                   pinDisableLeft, espErr);
+            printf("A_SENSOR_HALL_EFFECT: unable to enable the right-hand hall effect"
+                   " sensor (pin %d) (0x%02x)!\n", pinDisableRight, espErr);
         }
-    } else {
-        printf("Unable to enable the right-hand hall effect sensor (pin %d) (0x%02x)!\n",
-               pinDisableRight, espErr);
     }
 
     return espErr;
 }
 
 // Open the hall effect sensors.
-static esp_err_t sensorHallEffectOpen(i2c_master_bus_handle_t busHandle)
+static esp_err_t aSensorHallEffectOpen(i2c_master_bus_handle_t busHandle)
 {
     esp_err_t espErr = ESP_OK;
-    tmag5273Device_t *pTmag5273Device;
+    aTmag5273Device_t *pTmag5273Device;
 
     // Add and configure the devices
     for (size_t x = 0; (espErr == ESP_OK) && (x < sizeof(gTmag5273) / sizeof(gTmag5273[0])); x++) {
         pTmag5273Device = &(gTmag5273[x]);
-        espErr = i2cAddDevice(busHandle, pTmag5273Device->i2cAddress, &(pTmag5273Device->devHandle));
+        espErr = i2cAddDevice(busHandle, pTmag5273Device->i2cAddress,
+                              &(pTmag5273Device->devHandle));
         if (espErr == ESP_OK) {
-            tmag5273PowerOnResetClear(pTmag5273Device->devHandle);
-            printf("%s hall effect sensor opened.\n", pTmag5273Device->pNameStr);
+            tmag5273PowerOnResetClear(pTmag5273Device);
+            printf("A_SENSOR_HALL_EFFECT: %s hall effect sensor opened.\n",
+                   pTmag5273Device->pNameStr);
         } else {
-            printf("Unable to add TMAG5273 %s at I2C address 0x%02x (0x%02x)!",
-                   pTmag5273Device->pNameStr, pTmag5273Device->i2cAddress, espErr);
+            printf("A_SENSOR_HALL_EFFECT: unable to add TMAG5273 %s at"
+                   " I2C address 0x%02x (0x%02x)!", pTmag5273Device->pNameStr,
+                   pTmag5273Device->i2cAddress, espErr);
         }
     }
 
@@ -616,9 +752,9 @@ static esp_err_t sensorHallEffectOpen(i2c_master_bus_handle_t busHandle)
 }
 
 // Close the hall effect sensors.
-static void sensorHallEffectClose(i2c_master_bus_handle_t busHandle)
+static void aSensorHallEffectClose(i2c_master_bus_handle_t busHandle)
 {
-    tmag5273Device_t *pTmag5273Device;
+    aTmag5273Device_t *pTmag5273Device;
 
     for (size_t x = 0; x < sizeof(gTmag5273) / sizeof(gTmag5273[0]); x++) {
         pTmag5273Device = &(gTmag5273[x]);
@@ -630,11 +766,13 @@ static void sensorHallEffectClose(i2c_master_bus_handle_t busHandle)
 }
 
 // Start reading the hall effect sensors.
-static esp_err_t sensorHallEffectReadStart(gpio_num_t pinIntLeft,
-                                           gpio_num_t pinIntRight)
+static esp_err_t aSensorHallEffectReadStart(aSensorHallEffectCallbackRead_t pCallbackRead,
+                                            void *pCallbackReadParameter,
+                                            gpio_num_t pinIntLeft,
+                                            gpio_num_t pinIntRight)
 {
     esp_err_t espErr = ESP_OK;
-    tmag5273Device_t *pTmag5273Device;
+    aTmag5273Device_t *pTmag5273Device;
     char buffer[16];
 
     for (size_t x = 0; (espErr == ESP_OK) && 
@@ -643,11 +781,19 @@ static esp_err_t sensorHallEffectReadStart(gpio_num_t pinIntLeft,
         // For each opened device, if there's no read task then start one
         if ((pTmag5273Device->devHandle != NULL) &&
             (pTmag5273Device->readTask == NULL)) {
+            // Hook up the read callback and its parameter
+            pTmag5273Device->pCallbackRead = pCallbackRead;
+            pTmag5273Device->pCallbackReadParameter = pCallbackReadParameter;
+            // In case things are already buzzing, switch off interrupt
+            // mode in the TMAG5273 to begin with
+            tmag5273IntModeSet(pTmag5273Device, A_TMAG5273_INT_MODE_NONE);
             if (pTmag5273Device->readSemaphore == NULL) {
                 espErr = ESP_ERR_NO_MEM;
                 // We need a semaphore so that the interrupt
-                // can signal the task
-                pTmag5273Device->readSemaphore = xSemaphoreCreateCounting(1, 1);
+                // can signal the task, and have it initially "taken"
+                // (i.e. 0 available) in order that the read task won't
+                // be triggered until the interrupt gives the semaphore
+                pTmag5273Device->readSemaphore = xSemaphoreCreateCounting(1, 0);
                 if (pTmag5273Device->readSemaphore != NULL) {
                     espErr = ESP_OK;
                 }
@@ -655,9 +801,9 @@ static esp_err_t sensorHallEffectReadStart(gpio_num_t pinIntLeft,
             if (espErr == ESP_OK) {
                 // Store the interrupt pin
                 pTmag5273Device->pinInt = -1;
-                if (x == TMAG5273_LEFT) {
+                if (pTmag5273Device->direction == A_SENSOR_HALL_EFFECT_DIRECTION_LEFT) {
                     pTmag5273Device->pinInt = pinIntLeft;
-                } else if (x == TMAG5273_RIGHT) {
+                } else if (pTmag5273Device->direction == A_SENSOR_HALL_EFFECT_DIRECTION_RIGHT) {
                     pTmag5273Device->pinInt = pinIntRight;
                 }
                 if (pTmag5273Device->pinInt >= 0) {
@@ -668,9 +814,12 @@ static esp_err_t sensorHallEffectReadStart(gpio_num_t pinIntLeft,
                     if (espErr == ESP_OK) {
                         // Create the interrupt
                         gIsrServiceInstalled = true;
-                        espErr = gpio_isr_handler_add(pTmag5273Device->pinInt,
-                                                      isrHandler,
-                                                      pTmag5273Device);
+                        espErr = pinIntSet(pTmag5273Device->pinInt);
+                        if (espErr == ESP_OK) {
+                            espErr = gpio_isr_handler_add(pTmag5273Device->pinInt,
+                                                          isrHandler,
+                                                          pTmag5273Device);
+                        }
                     }
                 }
             }
@@ -688,29 +837,31 @@ static esp_err_t sensorHallEffectReadStart(gpio_num_t pinIntLeft,
                 // Now create the task with a nice descriptive name
                 // and a pointer to the TMAG5273 storage as parameter
                 snprintf(buffer, sizeof(buffer), "hall read %d", x);
-                if (xTaskCreate(readTask, buffer, READ_TASK_STACK_SIZE_BYTES,
-                                pTmag5273Device, READ_TASK_PRIORITY,
+                if (xTaskCreate(readTask, buffer, A_READ_TASK_STACK_SIZE_BYTES,
+                                pTmag5273Device, A_READ_TASK_PRIORITY,
                                 &(pTmag5273Device->readTask)) == pdPASS) {
                     espErr = ESP_OK;
                 }
             }
-            if ((espErr == ESP_OK) && (pTmag5273Device->pinInt >= 0)) {
-                // Set the interrupt mode in the TMAG5273
-                espErr = tmag5273IntModeSet(pTmag5273Device->devHandle,
-                                            TMAG5273_INT_MODE_INT_EXCEPT_I2C_BUSY);
-            }
             if (espErr == ESP_OK) {
-                // Configure the TMAG5273 to stream readings at us
-                espErr = tmag5273MagneticChannelSet(pTmag5273Device->devHandle,
-                                                    TMAG5273_MAGNETIC_CHANNEL_X_Y_Z);
+                // Configure the TMAG5273 to stream the relevant reading(s) to us
                 if (espErr == ESP_OK) {
-                    espErr = tmag5273ReadModeSet(pTmag5273Device,
-                                                 TMAG5273_READ_MODE_1_BYTE_16_BIT);
+                    espErr = tmag5273MagneticChannelSet(pTmag5273Device,
+                                                        A_TMAG5273_REG_CONTENTS_SENSOR_CONFIG_1_MAG_CH_EN);
                     if (espErr == ESP_OK) {
-                        espErr = tmag5273OperatingModeSet(pTmag5273Device->devHandle,
-                                                          TMAG5273_OPERATING_MODE_CONTINUOUS);
+                        espErr = tmag5273ReadModeSet(pTmag5273Device,
+                                                     A_TMAG5273_READ_MODE_1_BYTE_16_BIT);
+                        if (espErr == ESP_OK) {
+                            espErr = tmag5273OperatingModeSet(pTmag5273Device,
+                                                              A_TMAG5273_OPERATING_MODE_CONTINUOUS);
+                        }
                     }
                 }
+            }
+            if ((espErr == ESP_OK) && (pTmag5273Device->pinInt >= 0)) {
+                // Set the interrupt mode in the TMAG5273
+                espErr = tmag5273IntModeSet(pTmag5273Device,
+                                            A_TMAG5273_INT_MODE_INT_EXCEPT_I2C_BUSY);
             }
             if (espErr != ESP_OK) {
                 // Clean up on error
@@ -723,14 +874,41 @@ static esp_err_t sensorHallEffectReadStart(gpio_num_t pinIntLeft,
 }
 
 // Stop reading sensors.
-static void sensorHallEffectReadStop()
+static void aSensorHallEffectReadStop()
 {
-    tmag5273Device_t *pTmag5273Device;
+    aTmag5273Device_t *pTmag5273Device;
 
     for (size_t x = 0; x < sizeof(gTmag5273) / sizeof(gTmag5273[0]); x++) {
         pTmag5273Device = &(gTmag5273[x]);
         if (pTmag5273Device->devHandle != NULL) {
             readStop(pTmag5273Device);
+        }
+    }
+}
+
+/* ----------------------------------------------------------------
+ * STATIC FUNCTIONS: APPLICATION
+ * -------------------------------------------------------------- */
+
+// Callback for readings
+static void callbackRead(aSensorHallEffectDirection_t direction,
+                         int16_t reading, uint8_t conversionStatus,
+                         void *pParameter)
+{
+    (void) reading;
+    (void) pParameter;
+
+    gCallbackReadCount++;
+    if (direction == 0) {
+        if (gConversationStatusCountLeft < sizeof(gConversionStatusLeft) / sizeof(gConversionStatusLeft[0])) {
+            gConversionStatusLeft[gConversationStatusCountLeft] = conversionStatus;
+            gConversationStatusCountLeft++;
+        }
+    }
+    if (direction == 1) {
+        if (gConversationStatusCountRight < sizeof(gConversionStatusRight) / sizeof(gConversionStatusRight[0])) {
+            gConversionStatusRight[gConversationStatusCountRight] = conversionStatus;
+            gConversationStatusCountRight++;
         }
     }
 }
@@ -743,45 +921,43 @@ void app_main(void)
 {
     esp_err_t espErr;
     i2c_master_bus_handle_t busHandle;
-    int16_t bufferInt16[4];
-    uint8_t conversionStatus;
 
     // Open the I2C bus
     espErr = i2c_new_master_bus(&gI2cMasterBusConfig, &busHandle);
     if (espErr == ESP_OK) {
         // Initialise the hall effect stuff
-        espErr = sensorHallEffectInit(busHandle, PIN_SENSOR_HALL_EFFECT_DISABLE_LEFT,
-                                      PIN_SENSOR_HALL_EFFECT_DISABLE_RIGHT);
+        espErr = aSensorHallEffectInit(busHandle, A_PIN_SENSOR_HALL_EFFECT_DISABLE_LEFT,
+                                      A_PIN_SENSOR_HALL_EFFECT_DISABLE_RIGHT);
         if (espErr == ESP_OK) {
             // Open the hall effect stuff
-            espErr = sensorHallEffectOpen(busHandle);
+            espErr = aSensorHallEffectOpen(busHandle);
             if (espErr == ESP_OK) {
                 // Start the hall effect stuff reading
-                espErr = sensorHallEffectReadStart(PIN_SENSOR_HALL_EFFECT_INT_LEFT,
-                                                   PIN_SENSOR_HALL_EFFECT_INT_RIGHT);
+                espErr = aSensorHallEffectReadStart(callbackRead, NULL,
+                                                    A_PIN_SENSOR_HALL_EFFECT_INT_LEFT,
+                                                    A_PIN_SENSOR_HALL_EFFECT_INT_RIGHT);
                 if (espErr == ESP_OK) {
-                    // Read the devices in a loop
-                    printf("Reading sensors.\n");
-                    for (size_t x = 0; (espErr == ESP_OK) && (x < 100); x++) {
-                        for (size_t y = 0; (espErr == ESP_OK) && (y < sizeof(gTmag5273) / sizeof(gTmag5273[0])); y++) {
-                            espErr = i2cReadTmag5273Int16(gTmag5273[y].devHandle, bufferInt16, 6,
-                                                          &conversionStatus);
-                            if (espErr == ESP_OK) {
-                                printf("%s: X %d, Y %d, Z %d, status 0x%02x.\n",
-                                       gTmag5273[y].pNameStr,
-                                       bufferInt16[0], bufferInt16[1], bufferInt16[2], conversionStatus);
-                            } else {
-                                printf("Unable to perform a 1 byte, 16 bit read from TMAG5273 %s (0x%02x)!\n",
-                                       gTmag5273[y].pNameStr, espErr);
-                            }
-                        }
+                    // Wait a little while before stopping
+                    printf("Waiting for readings.\n");
+                    delayMs(5000);
+                    aSensorHallEffectReadStop();
+                    printf("Callback called %d time(s), stored %d left readings,"
+                           " %d right readings, here are the count values:\n",
+                           gCallbackReadCount, gConversationStatusCountLeft,
+                           gConversationStatusCountRight);
+                    for (size_t x = 0; x < gConversationStatusCountLeft; x++) {
+                        printf("%d: 0x%02x ", gConversionStatusLeft[x] >> 5, gConversionStatusLeft[x] & 0x03);
                     }
-                    sensorHallEffectReadStop();
-                    sensorHallEffectClose(busHandle);
-                    printf("Finished.\n");
+                    printf("\n");
+                    for (size_t x = 0; x < gConversationStatusCountRight; x++) {
+                        printf("%d: 0x%02x ", gConversionStatusRight[x] >> 5, gConversionStatusRight[x] & 0x03);
+                    }
+                    printf("\n");
                 } else {
                     printf("Unable to start read of hall effect sensors (0x%02x)!\n", espErr);
                 }
+                aSensorHallEffectClose(busHandle);
+                printf("Finished.\n");
             } else {
                 printf("Unable to open hall effect sensors (0x%02x)!\n", espErr);
             }
