@@ -15,7 +15,6 @@
  */
 
 // TODO:
-// - Convert readings into something meaningful
 // - Make a SensorHallEffect API for the main application, with a TMAG5273 implementation of it
 
 #include <stdio.h>
@@ -103,6 +102,12 @@
  * TYPES
  * -------------------------------------------------------------- */
 
+// The version of a TMAG5273 device, see Table 8-16 of the data sheet.
+typedef enum {
+    A_TMAG5273_VERSION_40_AND_80_MT = 1,
+    A_TMAG5273_VERSION_133_AND_266_MT = 2
+} aTmag5273Version_t;
+
 // The operating mode of a TMAG5273 device, see Table 8-4 of the data sheet.
 typedef enum {
     A_TMAG5273_OPERATING_MODE_STANDBY_TRIGGERED = 0,
@@ -172,8 +177,7 @@ typedef enum {
 
 // Function signature of a hall effect sensor read callback.
 typedef void (*aSensorHallEffectCallbackRead_t) (aSensorHallEffectDirection_t direction,
-                                                 int16_t reading,
-                                                 uint8_t conversionStatus,
+                                                 int32_t fluxTeslaX1e6,
                                                  void *pParameter);
 
 // Structure defining a TMAG5273.
@@ -188,6 +192,7 @@ typedef struct {
     SemaphoreHandle_t readSemaphore;
     volatile bool readTaskAbort;
     aTmag5273ReadMode_t readMode;
+    aTmag5273Version_t version;
     aSensorHallEffectCallbackRead_t pCallbackRead;
     void *pCallbackReadParameter;
 } aTmag5273Device_t;
@@ -220,20 +225,30 @@ static aTmag5273Device_t gTmag5273[] = {{.i2cAddress = A_I2C_ADDRESS_TMAG5273_SP
 // Keep track of whether the ISR service is already installed.
 static bool gIsrServiceInstalled = false;
 
+// Array to display a meaningful name for each possible device version
+static const char *gpTmag5273Version[] = {"reserved (0)",
+                                          "40 mT and 80 mT",
+                                          "133 mT and 266 mT",
+                                          "reserved (3)"};
+
+// Array of the base flux range values (range being +/- means it is twice
+// the textual value above) for each device version.
+static int32_t gTmag5273FluxMt[] = {0, 80, 266, 0};
+
 // How many times callbackRead() has been called.
 static size_t gCallbackReadCount = 0;
 
-// Storage for the conversion status of each reading, left-hand TMAG5273.
-static uint8_t gConversionStatusLeft[1000];
+// Storage for the readings from left-hand TMAG5273.
+static int32_t gReadingLeft[1000];
 
-// Storage for the conversion status of each reading, right-hand TMAG5273.
-static uint8_t gConversionStatusRight[1000];
+// Storage for the readings from right-hand TMAG5273.
+static int32_t gReadingRight[1000];
 
-// How many entries have been added to gConversionStatusLeft.
-static size_t gConversationStatusCountLeft = 0;
+// How many entries have been added to gReadingLeft.
+static size_t gReadingCountLeft = 0;
 
-// How many entries have been added to gConversionStatusRight.
-static size_t gConversationStatusCountRight = 0;
+// How many entries have been added to gReadingRight.
+static size_t gReadingCountRight = 0;
 
 /* ----------------------------------------------------------------
  * STATIC FUNCTIONS: MISC
@@ -549,6 +564,7 @@ static void readTask(void *pParameter)
     const aTmag5273Device_t *pTmag5273Device = (const aTmag5273Device_t *) pParameter;
     int16_t bufferInt16;
     uint8_t conversionStatus;
+    int32_t fluxTeslaX1e6;
 
     // Take the task mutex to signal that we are running
     if ((pTmag5273Device->readTaskMutex != NULL) &&
@@ -565,10 +581,15 @@ static void readTask(void *pParameter)
                 if ((i2cReadTmag5273Int16(pTmag5273Device->devHandle,
                                           &bufferInt16, sizeof(bufferInt16),
                                           &conversionStatus) == ESP_OK) &&
+                    ((conversionStatus & 0x03) == 0x01) && // Conversion complete, no diagnostic failure
                     (pTmag5273Device->pCallbackRead != NULL)) {
+                    // bufferInt16, divided by 2^16 (i.e. to make it a fractional value)
+                    // multiplied by the magnetic range for the given axis, is
+                    // the flux value in mini-Tesla: calculate it in micro-Tesla
+                    fluxTeslaX1e6 = (((int64_t) bufferInt16) * gTmag5273FluxMt[pTmag5273Device->version] * 1000) >> 16;
                     // Pass the data to the read callback
                     pTmag5273Device->pCallbackRead(pTmag5273Device->direction,
-                                                   bufferInt16, conversionStatus,
+                                                   fluxTeslaX1e6,
                                                    pTmag5273Device->pCallbackReadParameter);
                 }
             }
@@ -750,7 +771,6 @@ static esp_err_t aSensorHallEffectOpen(i2c_master_bus_handle_t busHandle)
     esp_err_t espErr = ESP_OK;
     aTmag5273Device_t *pTmag5273Device;
     uint8_t buffer[3] = {0};
-    uint8_t version;
 
     // Add and configure the devices
     for (size_t x = 0; (espErr == ESP_OK) && (x < sizeof(gTmag5273) / sizeof(gTmag5273[0])); x++) {
@@ -760,20 +780,35 @@ static esp_err_t aSensorHallEffectOpen(i2c_master_bus_handle_t busHandle)
         if (espErr == ESP_OK) {
             // Read the device ID and manufacturer ID registers
             // into buffer[]
-            tmag5273ReadModeSet(pTmag5273Device, A_TMAG5273_READ_MODE_STANDARD_3_BYTE);
-            i2cReadTmag5273Reg(pTmag5273Device->devHandle,
-                               A_TMAG5273_REG_ADDRESS_DEVICE_ID,
-                               buffer, sizeof(buffer));
-            // The version of the device is in bits 0 and 1 of the device ID
-            // where 1 = ±40-mT and ±80-mT range and 2 = ±133-mT and ±266-mT range
-            version = buffer[0] & 0x03;
-            // Clear the power-on reset flag
-            tmag5273PowerOnResetClear(pTmag5273Device);
-            printf("A_SENSOR_HALL_EFFECT: %s hall effect sensor opened,"
-                   " range %s, manufacturer ID 0x%04x.\n",
-                   pTmag5273Device->pNameStr,
-                   version == 1 ? "40 to 80 mT" : version == 2 ? "133 to 266 mT" : "unknown",
-                   (((uint16_t) buffer[1]) << 8) +  buffer[2]);
+            espErr = tmag5273ReadModeSet(pTmag5273Device,
+                                         A_TMAG5273_READ_MODE_STANDARD_3_BYTE);
+            if (espErr == ESP_OK) {
+                espErr = i2cReadTmag5273Reg(pTmag5273Device->devHandle,
+                                            A_TMAG5273_REG_ADDRESS_DEVICE_ID,
+                                            buffer, sizeof(buffer));
+                if (espErr == ESP_OK) {
+                    // The version of the device is in bits 0 and 1 of the device ID
+                    pTmag5273Device->version = buffer[0] & 0x03;
+                    // Clear the power-on reset flag
+                    tmag5273PowerOnResetClear(pTmag5273Device);
+                    printf("A_SENSOR_HALL_EFFECT: %s hall effect sensor opened,"
+                           " range %s, manufacturer ID 0x%04x.\n",
+                           pTmag5273Device->pNameStr,
+                           gpTmag5273Version[pTmag5273Device->version],
+                           (((uint16_t) buffer[1]) << 8) +  buffer[2]);
+                } else {
+                    printf("A_SENSOR_HALL_EFFECT: unable to read TMAG5273 %s"
+                           " (I2C address 0x%02x) device/manufacturer ID"
+                           " registers (register address 0x%02x) (0x%02x).\n",
+                           pTmag5273Device->pNameStr, pTmag5273Device->i2cAddress,
+                           A_TMAG5273_REG_ADDRESS_DEVICE_ID, espErr);
+                }
+            } else {
+                printf("A_SENSOR_HALL_EFFECT: unable to set TMAG5273 %s"
+                       " (I2C address 0x%02x) read mode to %d (0x%02x).\n",
+                       pTmag5273Device->pNameStr, pTmag5273Device->i2cAddress,
+                       A_TMAG5273_READ_MODE_STANDARD_3_BYTE, espErr);
+            }
         } else {
             printf("A_SENSOR_HALL_EFFECT: unable to add TMAG5273 %s at"
                    " I2C address 0x%02x (0x%02x)!", pTmag5273Device->pNameStr,
@@ -936,23 +971,22 @@ static void aSensorHallEffectReadStop()
 
 // Callback for readings
 static void callbackRead(aSensorHallEffectDirection_t direction,
-                         int16_t reading, uint8_t conversionStatus,
+                         int32_t fluxTeslaX1e6,
                          void *pParameter)
 {
-    (void) reading;
     (void) pParameter;
 
     gCallbackReadCount++;
     if (direction == 0) {
-        if (gConversationStatusCountLeft < sizeof(gConversionStatusLeft) / sizeof(gConversionStatusLeft[0])) {
-            gConversionStatusLeft[gConversationStatusCountLeft] = conversionStatus;
-            gConversationStatusCountLeft++;
+        if (gReadingCountLeft < sizeof(gReadingLeft) / sizeof(gReadingLeft[0])) {
+            gReadingLeft[gReadingCountLeft] = fluxTeslaX1e6;
+            gReadingCountLeft++;
         }
     }
     if (direction == 1) {
-        if (gConversationStatusCountRight < sizeof(gConversionStatusRight) / sizeof(gConversionStatusRight[0])) {
-            gConversionStatusRight[gConversationStatusCountRight] = conversionStatus;
-            gConversationStatusCountRight++;
+        if (gReadingCountRight < sizeof(gReadingRight) / sizeof(gReadingRight[0])) {
+            gReadingRight[gReadingCountRight] = fluxTeslaX1e6;
+            gReadingCountRight++;
         }
     }
 }
@@ -985,16 +1019,16 @@ void app_main(void)
                     printf("Waiting for readings.\n");
                     delayMs(5000);
                     aSensorHallEffectReadStop();
-                    printf("Callback called %d time(s), stored %d left readings,"
-                           " %d right readings, here are the count values:\n",
-                           gCallbackReadCount, gConversationStatusCountLeft,
-                           gConversationStatusCountRight);
-                    for (size_t x = 0; x < gConversationStatusCountLeft; x++) {
-                        printf("%d: 0x%02x ", gConversionStatusLeft[x] >> 5, gConversionStatusLeft[x] & 0x03);
+                    printf("Callback called %d time(s), stored %d left reading(s),"
+                           " %d right reading(s), here are the values in micro-Tesla:\n",
+                           gCallbackReadCount, gReadingCountLeft,
+                           gReadingCountRight);
+                    for (size_t x = 0; x < gReadingCountLeft; x++) {
+                        printf("%d ", (int) gReadingLeft[x]);
                     }
                     printf("\n");
-                    for (size_t x = 0; x < gConversationStatusCountRight; x++) {
-                        printf("%d: 0x%02x ", gConversionStatusRight[x] >> 5, gConversionStatusRight[x] & 0x03);
+                    for (size_t x = 0; x < gReadingCountRight; x++) {
+                        printf("%d ", (int) gReadingRight[x]);
                     }
                     printf("\n");
                 } else {
