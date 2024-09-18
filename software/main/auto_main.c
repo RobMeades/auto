@@ -44,13 +44,16 @@
 
 // Register addresses in the TMAG5273 device, see
 // https://www.ti.com/lit/ds/symlink/tmag5273.pdf
-#define A_TMAG5273_REG_ADDRESS_DEVICE_CONFIG_1  0x00
-#define A_TMAG5273_REG_ADDRESS_DEVICE_CONFIG_2  0x01
-#define A_TMAG5273_REG_ADDRESS_SENSOR_CONFIG_1  0x02
-#define A_TMAG5273_REG_ADDRESS_T_CONFIG         0x07
-#define A_TMAG5273_REG_ADDRESS_INT_CONFIG_1     0x08
-#define A_TMAG5273_REG_ADDRESS_I2C_ADDRESS      0x0c
-#define A_TMAG5273_REG_ADDRESS_CONV_STATUS      0x18
+#define A_TMAG5273_REG_ADDRESS_DEVICE_CONFIG_1      0x00
+#define A_TMAG5273_REG_ADDRESS_DEVICE_CONFIG_2      0x01
+#define A_TMAG5273_REG_ADDRESS_SENSOR_CONFIG_1      0x02
+#define A_TMAG5273_REG_ADDRESS_T_CONFIG             0x07
+#define A_TMAG5273_REG_ADDRESS_INT_CONFIG_1         0x08
+#define A_TMAG5273_REG_ADDRESS_I2C_ADDRESS          0x0c
+#define A_TMAG5273_REG_ADDRESS_DEVICE_ID            0x0d
+#define A_TMAG5273_REG_ADDRESS_MANUFACTURER_ID_LSB  0x0e
+#define A_TMAG5273_REG_ADDRESS_MANUFACTURER_ID_MSB  0x0f
+#define A_TMAG5273_REG_ADDRESS_CONV_STATUS          0x18
 
 // Static register contents for a TMAG5273 device, DEVICE_CONFIG_1.
 #define A_TMAG5273_REG_CONTENTS_DEVICE_CONFIG_1_CRC_EN      0x00  // Bit 7
@@ -416,6 +419,32 @@ static esp_err_t i2cReadTmag5273Int16(i2c_master_dev_handle_t devHandle,
     return espErr;
 }
 
+// Read the registers (with auto-increment) from a TMAG5273.  Before
+// this is called the read mode (see tmag5273ReadModeSet()) must be set
+// to A_TMAG5273_READ_MODE_STANDARD_3_BYTE.
+static esp_err_t i2cReadTmag5273Reg(i2c_master_dev_handle_t devHandle,
+                                    uint8_t regAddress, uint8_t *pBuffer,
+                                    size_t bufferLength)
+{
+    esp_err_t espErr = ESP_ERR_INVALID_STATE;
+
+    if ((gI2cMutex != NULL) &&
+        (xSemaphoreTake(gI2cMutex,
+                        (TickType_t) portMAX_DELAY) == pdPASS)) {
+
+        espErr = i2c_master_transmit_receive(devHandle, &regAddress, 1,
+                                             pBuffer, bufferLength, -1);
+        if (espErr != ESP_OK) {
+            printf("A_SENSOR_HALL_EFFECT: i2c_master_transmit_receive() of"
+                   " %d byte(s) returned error 0x%02x!\n", bufferLength, espErr);
+        }
+
+        xSemaphoreGive(gI2cMutex);
+    }
+
+    return espErr;
+}
+
 /* ----------------------------------------------------------------
  * STATIC FUNCTIONS: TMAG5273 SETTINGS
  * -------------------------------------------------------------- */
@@ -720,6 +749,8 @@ static esp_err_t aSensorHallEffectOpen(i2c_master_bus_handle_t busHandle)
 {
     esp_err_t espErr = ESP_OK;
     aTmag5273Device_t *pTmag5273Device;
+    uint8_t buffer[3] = {0};
+    uint8_t version;
 
     // Add and configure the devices
     for (size_t x = 0; (espErr == ESP_OK) && (x < sizeof(gTmag5273) / sizeof(gTmag5273[0])); x++) {
@@ -727,9 +758,22 @@ static esp_err_t aSensorHallEffectOpen(i2c_master_bus_handle_t busHandle)
         espErr = i2cAddDevice(busHandle, pTmag5273Device->i2cAddress,
                               &(pTmag5273Device->devHandle));
         if (espErr == ESP_OK) {
+            // Read the device ID and manufacturer ID registers
+            // into buffer[]
+            tmag5273ReadModeSet(pTmag5273Device, A_TMAG5273_READ_MODE_STANDARD_3_BYTE);
+            i2cReadTmag5273Reg(pTmag5273Device->devHandle,
+                               A_TMAG5273_REG_ADDRESS_DEVICE_ID,
+                               buffer, sizeof(buffer));
+            // The version of the device is in bits 0 and 1 of the device ID
+            // where 1 = ±40-mT and ±80-mT range and 2 = ±133-mT and ±266-mT range
+            version = buffer[0] & 0x03;
+            // Clear the power-on reset flag
             tmag5273PowerOnResetClear(pTmag5273Device);
-            printf("A_SENSOR_HALL_EFFECT: %s hall effect sensor opened.\n",
-                   pTmag5273Device->pNameStr);
+            printf("A_SENSOR_HALL_EFFECT: %s hall effect sensor opened,"
+                   " range %s, manufacturer ID 0x%04x.\n",
+                   pTmag5273Device->pNameStr,
+                   version == 1 ? "40 to 80 mT" : version == 2 ? "133 to 266 mT" : "unknown",
+                   (((uint16_t) buffer[1]) << 8) +  buffer[2]);
         } else {
             printf("A_SENSOR_HALL_EFFECT: unable to add TMAG5273 %s at"
                    " I2C address 0x%02x (0x%02x)!", pTmag5273Device->pNameStr,
