@@ -14,8 +14,10 @@
  * limitations under the License.
  */
 
-// TODO:
-// - Make a SensorHallEffect API for the main application, with a TMAG5273 implementation of it
+/** @file
+ * @brief Implementation of the aSensorHallEffect API for a pair
+ * of TMAG5273 hall effect chips.
+ */
 
 #include <stdio.h>
 #include <string.h>
@@ -27,12 +29,34 @@
 #include <driver/gpio.h>
 #include <driver/i2c_master.h>
 
+#include <a_util.h>
+#include <a_sensor_hall_effect.h>
+
 /* ----------------------------------------------------------------
- * COMPILE-TIME MACROS
+ * COMPILE-TIME MACROS: MISC
  * -------------------------------------------------------------- */
 
 // Prefix for all logging prints from this file.
 #define LOG_TAG "A_SENSOR_HALL_EFFECT: "
+
+#ifndef A_READ_TASK_STACK_SIZE_BYTES
+// Stack size for the hall effect sensor read task (in bytes).
+# define A_READ_TASK_STACK_SIZE_BYTES (1024 * 3)
+#endif
+
+#ifndef A_READ_TASK_PRIORITY
+// Priority of the hall effect sensor read task.
+# define A_READ_TASK_PRIORITY 10
+#endif
+
+#ifndef A_READ_TASK_EXIT_WAIT_MS
+// How long to wait for the hall effect sensor read task to exit.
+# define A_READ_TASK_EXIT_WAIT_MS 1000
+#endif
+
+/* ----------------------------------------------------------------
+ * COMPILE-TIME MACROS: I2C
+ * -------------------------------------------------------------- */
 
 #ifndef A_I2C_SPEED_TMAG5273_HZ
 // I2C speed for the TMAG5273.
@@ -43,6 +67,10 @@
 #define A_I2C_ADDRESS_TMAG5273_SPARKFUN_DEFAULT 0x22
 #define A_I2C_ADDRESS_TMAG5273_SPARKFUN_LEFT A_I2C_ADDRESS_TMAG5273_SPARKFUN_DEFAULT
 #define A_I2C_ADDRESS_TMAG5273_SPARKFUN_RIGHT (A_I2C_ADDRESS_TMAG5273_SPARKFUN_DEFAULT + 1)
+
+/* ----------------------------------------------------------------
+ * COMPILE-TIME MACROS: TMAG5273
+ * -------------------------------------------------------------- */
 
 // Register addresses in the TMAG5273 device, see
 // https://www.ti.com/lit/ds/symlink/tmag5273.pdf
@@ -64,7 +92,7 @@
 
 // Static register contents for a TMAG5273 device, DEVICE_CONFIG_2.
 #define A_TMAG5273_REG_CONTENTS_DEVICE_CONFIG_2_THR_HYST          0x00  // Bits 7, 6 and 5
-#define A_TMAG5273_REG_CONTENTS_DEVICE_CONFIG_2_LP_LN             0x00  // Bit 4
+#define A_TMAG5273_REG_CONTENTS_DEVICE_CONFIG_2_LP_LN             0x01  // Bit 4: low noise mode
 #define A_TMAG5273_REG_CONTENTS_DEVICE_CONFIG_2_I2C_GLITCH_FILTER 0x00  // Bit 3
 #define A_TMAG5273_REG_CONTENTS_DEVICE_CONFIG_2_TRIGGER_MODE      0x00  // Bit 2
 
@@ -77,29 +105,6 @@
 #define A_TMAG5273_REG_CONTENTS_INT_CONFIG_1_INT_STATE  0x00  // Bit 5
 #define A_TMAG5273_REG_CONTENTS_INT_CONFIG_1_RESERVED   0x00  // Bit 1
 #define A_TMAG5273_REG_CONTENTS_INT_CONFIG_1_MASK_INTB  0x00  // Bit 0
-
-// MCU pins.
-#define A_PIN_I2C_SCL                           7
-#define A_PIN_I2C_SDA                           8
-#define A_PIN_SENSOR_HALL_EFFECT_DISABLE_LEFT   9
-#define A_PIN_SENSOR_HALL_EFFECT_DISABLE_RIGHT 10
-#define A_PIN_SENSOR_HALL_EFFECT_INT_LEFT      11
-#define A_PIN_SENSOR_HALL_EFFECT_INT_RIGHT     12
-
-#ifndef A_READ_TASK_STACK_SIZE_BYTES
-// Stack size for the hall effect sensor read task (in bytes).
-# define A_READ_TASK_STACK_SIZE_BYTES (1024 * 3)
-#endif
-
-#ifndef A_READ_TASK_PRIORITY
-// Priority of the hall effect sensor read task.
-# define A_READ_TASK_PRIORITY 10
-#endif
-
-#ifndef A_READ_TASK_EXIT_WAIT_MS
-// How long to wait for the hall effect sensor read task to exit.
-# define A_READ_TASK_EXIT_WAIT_MS 1000
-#endif
 
 /* ----------------------------------------------------------------
  * TYPES
@@ -170,17 +175,6 @@ typedef enum {
     A_TMAG5273_INT_MODE_SCL_EXCEPT_I2C_BUSY = 4
 } aTmag5273IntMode_t;
 
-// The hall effect sensor directions.
-typedef enum {
-    A_SENSOR_HALL_EFFECT_DIRECTION_LEFT,
-    A_SENSOR_HALL_EFFECT_DIRECTION_RIGHT
-} aSensorHallEffectDirection_t;
-
-// Function signature of a hall effect sensor read callback.
-typedef void (*aSensorHallEffectCallbackRead_t) (aSensorHallEffectDirection_t direction,
-                                                 int32_t fluxTeslaX1e6,
-                                                 void *pParameter);
-
 // Structure defining a TMAG5273.
 typedef struct {
     uint8_t i2cAddress;
@@ -203,72 +197,37 @@ typedef struct {
  * VARIABLES
  * -------------------------------------------------------------- */
 
-// I2C bus configuration.
-static const i2c_master_bus_config_t gI2cMasterBusConfig = {
-    .clk_source = I2C_CLK_SRC_DEFAULT,
-    .i2c_port = 0,
-    .scl_io_num = A_PIN_I2C_SCL,
-    .sda_io_num = A_PIN_I2C_SDA,
-    .glitch_ignore_cnt = 7,
-    .flags.enable_internal_pullup = false
-};
-
 // Mutex to arbitrate I2C activity.
 static SemaphoreHandle_t gI2cMutex = NULL;
 
 // Storage for the TMAG5273 hall effect sensors.
 static aTmag5273Device_t gTmag5273[] = {{.i2cAddress = A_I2C_ADDRESS_TMAG5273_SPARKFUN_LEFT,
-                                         .pNameStr = "LEFT",
+                                         .pNameStr = "left-hand",
                                          .direction = A_SENSOR_HALL_EFFECT_DIRECTION_LEFT,
                                          .pinDisable = -1},
                                         {.i2cAddress = A_I2C_ADDRESS_TMAG5273_SPARKFUN_RIGHT,
-                                         .pNameStr = "RIGHT",
+                                         .pNameStr = "right-hand",
                                          .direction = A_SENSOR_HALL_EFFECT_DIRECTION_RIGHT,
                                          .pinDisable = -1}};
 
 // Keep track of whether the ISR service is already installed.
 static bool gIsrServiceInstalled = false;
 
-// Array to display a meaningful name for each possible device version
+// Array to display a meaningful name for each possible
+// device version, which is defined by the magnetic ranges
+// supported.
 static const char *gpTmag5273Version[] = {"reserved (0)",
                                           "40 mT and 80 mT",
                                           "133 mT and 266 mT",
                                           "reserved (3)"};
 
-// Array of the base flux range values (range being +/- means it is twice
-// the textual value above) for each device version.
+// Array of the base flux range values (range being +/- means
+// it is twice the textual value above) for each device version.
 static int32_t gTmag5273FluxMt[] = {0, 80, 266, 0};
-
-// How many times callbackRead() has been called.
-static size_t gCallbackReadCount = 0;
-
-// Storage for the readings from left-hand TMAG5273.
-static int32_t gReadingLeft[1000];
-
-// Storage for the readings from right-hand TMAG5273.
-static int32_t gReadingRight[1000];
-
-// How many entries have been added to gReadingLeft.
-static size_t gReadingCountLeft = 0;
-
-// How many entries have been added to gReadingRight.
-static size_t gReadingCountRight = 0;
 
 /* ----------------------------------------------------------------
  * STATIC FUNCTIONS: MISC
  * -------------------------------------------------------------- */
-
-// Task block for the given number of milliseconds.
-static void delayMs(size_t timeMs)
-{
-    vTaskDelay(timeMs / portTICK_PERIOD_MS);
-}
-
-// Wot it says.
-static int64_t timeSinceBootMs()
-{
-    return esp_timer_get_time() / 1000;
-}
 
 // Set an MCU pin to be an output at the given level.
 static esp_err_t pinOutputSet(gpio_num_t pin, int32_t level)
@@ -316,6 +275,22 @@ static esp_err_t pinIntSet(gpio_num_t pin)
     }
 
     return espErr;
+}
+
+// Store the disable pin for the TMAG5273 of the given direction.
+static void pinDisableSet(gpio_num_t pinDisable,
+                          aSensorHallEffectDirection_t direction)
+{
+    bool found = false;
+    aTmag5273Device_t *pTmag5273Device;
+
+    for (size_t x = 0; !found && (x < sizeof(gTmag5273) / sizeof(gTmag5273[0])); x++) {
+        pTmag5273Device = &(gTmag5273[x]);
+        if (pTmag5273Device->direction == direction) {
+            pTmag5273Device->pinDisable = pinDisable;
+            found = true;
+        }
+    }
 }
 
 /* ----------------------------------------------------------------
@@ -546,29 +521,13 @@ static esp_err_t tmag5273IntModeSet(aTmag5273Device_t *pTmag5273Device,
                              A_TMAG5273_REG_CONTENTS_INT_CONFIG_1_MASK_INTB};
 
     return i2cWriteTmag5273(pTmag5273Device->devHandle,
-                             A_TMAG5273_REG_ADDRESS_INT_CONFIG_1,
+                            A_TMAG5273_REG_ADDRESS_INT_CONFIG_1,
                             writeBuffer, sizeof(writeBuffer));
 }
 
 /* ----------------------------------------------------------------
- * STATIC FUNCTIONS: SENSOR, HALL EFFECT
+ * STATIC FUNCTIONS: TAKING MAGNETIC READINGS FROM TMAG5273
  * -------------------------------------------------------------- */
-
-// Store the disable pin for the TMAG5273 of the given direction.
-static void pinDisableSet(gpio_num_t pinDisable,
-                          aSensorHallEffectDirection_t direction)
-{
-    bool found = false;
-    aTmag5273Device_t *pTmag5273Device;
-
-    for (size_t x = 0; !found && (x < sizeof(gTmag5273) / sizeof(gTmag5273[0])); x++) {
-        pTmag5273Device = &(gTmag5273[x]);
-        if (pTmag5273Device->direction == direction) {
-            pTmag5273Device->pinDisable = pinDisable;
-            found = true;
-        }
-    }
-}
 
 // ISR handler function for the TMAG5273 hall effect sensor.
 // pParameter must be a pointer to an aTmag5273Device_t structure.
@@ -594,6 +553,7 @@ static void readTask(void *pParameter)
     int16_t bufferInt16;
     uint8_t conversionStatus;
     int32_t fluxTeslaX1e6;
+    int64_t multiplier = gTmag5273FluxMt[pTmag5273Device->version] * 1000;
 
     // Take the task mutex to signal that we are running
     if ((pTmag5273Device->readTaskMutex != NULL) &&
@@ -615,7 +575,8 @@ static void readTask(void *pParameter)
                     // bufferInt16, divided by 2^16 (i.e. to make it a fractional value)
                     // multiplied by the magnetic range for the given axis, is
                     // the flux value in mini-Tesla: calculate it in micro-Tesla
-                    fluxTeslaX1e6 = (((int64_t) bufferInt16) * gTmag5273FluxMt[pTmag5273Device->version] * 1000) >> 16;
+                    // to avoid floats
+                    fluxTeslaX1e6 = (int32_t) ((((int64_t) bufferInt16) * multiplier) >> 16);
                     // Pass the data to the read callback
                     pTmag5273Device->pCallbackRead(pTmag5273Device->direction,
                                                    fluxTeslaX1e6,
@@ -650,8 +611,8 @@ static void readStop(aTmag5273Device_t *pTmag5273Device)
         pTmag5273Device->readTaskAbort = true;
         if (pTmag5273Device->readTaskMutex != NULL) {
             // Now wait for the read task to exit in its own time
-            startTimeMs = timeSinceBootMs();
-            while ((timeSinceBootMs() < startTimeMs + A_READ_TASK_EXIT_WAIT_MS) &&
+            startTimeMs = aUtilTimeSinceBootMs();
+            while ((aUtilTimeSinceBootMs() < startTimeMs + A_READ_TASK_EXIT_WAIT_MS) &&
                    (xSemaphoreTake(pTmag5273Device->readTaskMutex,
                                    100 / portTICK_PERIOD_MS) != pdTRUE)) {
                 // Waiting...
@@ -665,7 +626,7 @@ static void readStop(aTmag5273Device_t *pTmag5273Device)
             } else {
                 printf(LOG_TAG "%s hall effect sensor read task"
                        " did not exit (waited about %lld ms)!\n",
-                       pTmag5273Device->pNameStr, timeSinceBootMs() - startTimeMs);
+                       pTmag5273Device->pNameStr, aUtilTimeSinceBootMs() - startTimeMs);
             }
         }
     }
@@ -687,7 +648,7 @@ static void readStop(aTmag5273Device_t *pTmag5273Device)
 
     // Let the idle task run so that the read task is tidied-up
     // by the idle task
-    delayMs(100);
+    aUtilDelayMs(100);
 
     // Reset the abort flag so that we can use the structure again
     pTmag5273Device->readTaskAbort = false;
@@ -700,10 +661,14 @@ static void readStop(aTmag5273Device_t *pTmag5273Device)
     pTmag5273Device->pCallbackReadParameter = NULL;
 }
 
+/* ----------------------------------------------------------------
+ * PUBLIC FUNCTIONS
+ * -------------------------------------------------------------- */
+
 // Initialise the I2C addresses of the hall effect sensors.
-static esp_err_t aSensorHallEffectInit(i2c_master_bus_handle_t busHandle,
-                                       gpio_num_t pinDisableLeft,
-                                       gpio_num_t pinDisableRight)
+esp_err_t aSensorHallEffectInit(i2c_master_bus_handle_t busHandle,
+                                gpio_num_t pinDisableLeft,
+                                gpio_num_t pinDisableRight)
 {
     esp_err_t espErr = ESP_ERR_NO_MEM;
     uint8_t buffer[1];
@@ -726,7 +691,7 @@ static esp_err_t aSensorHallEffectInit(i2c_master_bus_handle_t busHandle,
         // Set both disables in order to reset both sensors
         pinOutputSet(pinDisableLeft, 1);
         pinOutputSet(pinDisableRight, 1);
-        delayMs(10);
+        aUtilDelayMs(10);
         // Enable just the right-hand hall effect sensor to begin with
         espErr = pinOutputSet(pinDisableRight, 0);
         if (espErr == ESP_OK) {
@@ -735,7 +700,7 @@ static esp_err_t aSensorHallEffectInit(i2c_master_bus_handle_t busHandle,
             // the I2C address of the right-hand one
             espErr = pinOutputSet(pinDisableLeft, 1);
             if (espErr == ESP_OK) {
-                delayMs(10);
+                aUtilDelayMs(10);
                 printf(LOG_TAG "probing for right-hand TMAG5273 hall effect"
                        " sensor at I2C address 0x%02x...\n", A_I2C_ADDRESS_TMAG5273_SPARKFUN_RIGHT);
                 espErr = i2c_master_probe(busHandle, A_I2C_ADDRESS_TMAG5273_SPARKFUN_RIGHT, -1);
@@ -784,7 +749,7 @@ static esp_err_t aSensorHallEffectInit(i2c_master_bus_handle_t busHandle,
                     espErr = pinOutputSet(pinDisableLeft, 0);
                     if (espErr == ESP_OK) {
                         printf(LOG_TAG "left-hand TMAG5273 hall effect sensor enabled.\n");
-                        delayMs(10);
+                        aUtilDelayMs(10);
                         // Store the disable pins so that we can deinitialise later
                         pinDisableSet(pinDisableLeft, A_SENSOR_HALL_EFFECT_DIRECTION_LEFT);
                         pinDisableSet(pinDisableRight, A_SENSOR_HALL_EFFECT_DIRECTION_RIGHT);
@@ -805,7 +770,7 @@ static esp_err_t aSensorHallEffectInit(i2c_master_bus_handle_t busHandle,
 }
 
 // Open the hall effect sensors.
-static esp_err_t aSensorHallEffectOpen(i2c_master_bus_handle_t busHandle)
+esp_err_t aSensorHallEffectOpen(i2c_master_bus_handle_t busHandle)
 {
     esp_err_t espErr = ESP_OK;
     aTmag5273Device_t *pTmag5273Device;
@@ -831,7 +796,7 @@ static esp_err_t aSensorHallEffectOpen(i2c_master_bus_handle_t busHandle)
                     // Clear the power-on reset flag
                     tmag5273PowerOnResetClear(pTmag5273Device);
                     printf(LOG_TAG "%s hall effect sensor opened,"
-                           " range %s, manufacturer ID 0x%04x.\n",
+                           " ranges %s, manufacturer ID 0x%04x.\n",
                            pTmag5273Device->pNameStr,
                            gpTmag5273Version[pTmag5273Device->version],
                            (((uint16_t) buffer[1]) << 8) +  buffer[2]);
@@ -870,21 +835,22 @@ static esp_err_t aSensorHallEffectOpen(i2c_master_bus_handle_t busHandle)
 }
 
 // Close the hall effect sensors.
-static void aSensorHallEffectClose(i2c_master_bus_handle_t busHandle)
+void aSensorHallEffectClose()
 {
     aTmag5273Device_t *pTmag5273Device;
 
     for (size_t x = 0; x < sizeof(gTmag5273) / sizeof(gTmag5273[0]); x++) {
         pTmag5273Device = &(gTmag5273[x]);
+        readStop(pTmag5273Device);
         i2cRemoveDevice(pTmag5273Device);
     }
 }
 
 // Start reading the hall effect sensors.
-static esp_err_t aSensorHallEffectReadStart(aSensorHallEffectCallbackRead_t pCallbackRead,
-                                            void *pCallbackReadParameter,
-                                            gpio_num_t pinIntLeft,
-                                            gpio_num_t pinIntRight)
+esp_err_t aSensorHallEffectReadStart(aSensorHallEffectCallbackRead_t pCallbackRead,
+                                     void *pCallbackReadParameter,
+                                     gpio_num_t pinIntLeft,
+                                     gpio_num_t pinIntRight)
 {
     esp_err_t espErr = ESP_OK;
     aTmag5273Device_t *pTmag5273Device;
@@ -989,7 +955,7 @@ static esp_err_t aSensorHallEffectReadStart(aSensorHallEffectCallbackRead_t pCal
 }
 
 // Stop reading sensors.
-static void aSensorHallEffectReadStop()
+void aSensorHallEffectReadStop()
 {
     aTmag5273Device_t *pTmag5273Device;
 
@@ -1002,7 +968,7 @@ static void aSensorHallEffectReadStop()
 }
 
 // Deinitialise the hall effect sensors and free resources.
-static void aSensorHallEffectDeinit()
+void aSensorHallEffectDeinit()
 {
     aTmag5273Device_t *pTmag5273Device;
 
@@ -1024,97 +990,6 @@ static void aSensorHallEffectDeinit()
         vSemaphoreDelete(gI2cMutex);
         gI2cMutex = NULL;
     }
-}
-
-/* ----------------------------------------------------------------
- * STATIC FUNCTIONS: APPLICATION
- * -------------------------------------------------------------- */
-
-// Callback for readings
-static void callbackRead(aSensorHallEffectDirection_t direction,
-                         int32_t fluxTeslaX1e6,
-                         void *pParameter)
-{
-    (void) pParameter;
-
-    gCallbackReadCount++;
-    if (direction == 0) {
-        if (gReadingCountLeft < sizeof(gReadingLeft) / sizeof(gReadingLeft[0])) {
-            gReadingLeft[gReadingCountLeft] = fluxTeslaX1e6;
-            gReadingCountLeft++;
-        }
-    }
-    if (direction == 1) {
-        if (gReadingCountRight < sizeof(gReadingRight) / sizeof(gReadingRight[0])) {
-            gReadingRight[gReadingCountRight] = fluxTeslaX1e6;
-            gReadingCountRight++;
-        }
-    }
-}
-
-/* ----------------------------------------------------------------
- * PUBLIC FUNCTIONS
- * -------------------------------------------------------------- */
-
-void app_main(void)
-{
-    esp_err_t espErr;
-    i2c_master_bus_handle_t busHandle;
-
-    // Open the I2C bus
-    espErr = i2c_new_master_bus(&gI2cMasterBusConfig, &busHandle);
-    if (espErr == ESP_OK) {
-        for (size_t x = 0; (espErr == ESP_OK) && (x < 2); x++) {
-            // Initialise the hall effect stuff
-            espErr = aSensorHallEffectInit(busHandle, A_PIN_SENSOR_HALL_EFFECT_DISABLE_LEFT,
-                                           A_PIN_SENSOR_HALL_EFFECT_DISABLE_RIGHT);
-            if (espErr == ESP_OK) {
-                // Open the hall effect stuff
-                espErr = aSensorHallEffectOpen(busHandle);
-                if (espErr == ESP_OK) {
-                    // Start the hall effect stuff reading
-                    espErr = aSensorHallEffectReadStart(callbackRead, NULL,
-                                                        A_PIN_SENSOR_HALL_EFFECT_INT_LEFT,
-                                                        A_PIN_SENSOR_HALL_EFFECT_INT_RIGHT);
-                    if (espErr == ESP_OK) {
-                        // Wait a little while before stopping
-                        printf("Waiting for readings.\n");
-                        delayMs(5000);
-                        aSensorHallEffectReadStop();
-                        printf("Callback called %d time(s), stored %d left reading(s),"
-                               " %d right reading(s), here are the values in micro-Tesla:\n",
-                               gCallbackReadCount, gReadingCountLeft,
-                               gReadingCountRight);
-                        for (size_t y = 0; y < gReadingCountLeft; y++) {
-                            printf("%d ", (int) gReadingLeft[y]);
-                        }
-                        printf("\n");
-                        for (size_t y = 0; y < gReadingCountRight; y++) {
-                            printf("%d ", (int) gReadingRight[y]);
-                        }
-                        printf("\n");
-                        gCallbackReadCount = 0;
-                        gReadingCountLeft = 0;
-                        gReadingCountRight = 0;
-                    } else {
-                        printf("Unable to start read of hall effect sensors (0x%02x)!\n", espErr);
-                    }
-                    aSensorHallEffectClose(busHandle);
-                    printf("Finished.\n");
-                } else {
-                    printf("Unable to open hall effect sensors (0x%02x)!\n", espErr);
-                }
-                aSensorHallEffectDeinit();
-            } else {
-                printf("Unable to initialise hall effect sensors (0x%02x)!\n", espErr);
-            }
-        }
-        i2c_del_master_bus(busHandle);
-    } else {
-        printf("Unable to open I2C bus (0x%02x)!\n", espErr);
-    }
-
-    printf("If this is the ESP-IDF monitor program, press CTRL ] to terminate it.\n");
 }
 
 // End of file
