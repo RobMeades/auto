@@ -133,38 +133,42 @@ void app_main(void)
                                " %d right reading(s), here are the values in micro-Tesla:\n",
                                gCallbackReadCount, gReadingCountLeft,
                                gReadingCountRight);
-                        sum = 0;
-                        rangeUpper = gReadingLeft[0];
-                        rangeLower = rangeUpper;
-                        for (size_t y = 0; y < gReadingCountLeft; y++) {
-                            printf("%d ", (int) gReadingLeft[y]);
-                            sum += gReadingLeft[y];
-                            if (gReadingLeft[y] > rangeUpper) {
-                                rangeUpper = gReadingLeft[y];
+                        if (gReadingCountRight > 0) {
+                            sum = 0;
+                            rangeUpper = gReadingLeft[0];
+                            rangeLower = rangeUpper;
+                            for (size_t y = 0; y < gReadingCountLeft; y++) {
+                                printf("%d ", (int) gReadingLeft[y]);
+                                sum += gReadingLeft[y];
+                                if (gReadingLeft[y] > rangeUpper) {
+                                    rangeUpper = gReadingLeft[y];
+                                }
+                                if (gReadingLeft[y] < rangeLower) {
+                                    rangeLower = gReadingLeft[y];
+                                }
                             }
-                            if (gReadingLeft[y] < rangeLower) {
-                                rangeLower = gReadingLeft[y];
-                            }
+                            printf("\nAverage %lld, upper %d, lower %d, range %d.\n",
+                                   sum / gReadingCountLeft, (int) rangeUpper, (int) rangeLower,
+                                   (int) (rangeUpper - rangeLower));
                         }
-                        printf("\nAverage %lld, upper %d, lower %d, range %d.\n",
-                               sum / gReadingCountLeft, (int) rangeUpper, (int) rangeLower,
-                               (int) (rangeUpper - rangeLower));
-                        sum = 0;
-                        rangeUpper = gReadingRight[0];
-                        rangeLower = rangeUpper;
-                        for (size_t y = 0; y < gReadingCountRight; y++) {
-                            printf("%d ", (int) gReadingRight[y]);
-                            sum += gReadingRight[y];
-                            if (gReadingRight[y] > rangeUpper) {
-                                rangeUpper = gReadingRight[y];
+                        if (gReadingCountLeft > 0) {
+                            sum = 0;
+                            rangeUpper = gReadingRight[0];
+                            rangeLower = rangeUpper;
+                            for (size_t y = 0; y < gReadingCountRight; y++) {
+                                printf("%d ", (int) gReadingRight[y]);
+                                sum += gReadingRight[y];
+                                if (gReadingRight[y] > rangeUpper) {
+                                    rangeUpper = gReadingRight[y];
+                                }
+                                if (gReadingRight[y] < rangeLower) {
+                                    rangeLower = gReadingRight[y];
+                                }
                             }
-                            if (gReadingRight[y] < rangeLower) {
-                                rangeLower = gReadingRight[y];
-                            }
+                            printf("\nAverage %lld, upper %d, lower %d, range %d.\n",
+                                   sum / gReadingCountRight, (int) rangeUpper, (int) rangeLower,
+                                   (int) (rangeUpper - rangeLower));
                         }
-                        printf("\nAverage %lld, upper %d, lower %d, range %d.\n",
-                               sum / gReadingCountRight, (int) rangeUpper, (int) rangeLower,
-                               (int) (rangeUpper - rangeLower));
                         gCallbackReadCount = 0;
                         gReadingCountLeft = 0;
                         gReadingCountRight = 0;

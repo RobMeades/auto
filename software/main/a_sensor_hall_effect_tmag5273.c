@@ -21,6 +21,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <endian.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
@@ -53,6 +54,8 @@
 // How long to wait for the hall effect sensor read task to exit.
 # define A_READ_TASK_EXIT_WAIT_MS 1000
 #endif
+
+
 
 /* ----------------------------------------------------------------
  * COMPILE-TIME MACROS: I2C
@@ -392,27 +395,34 @@ static esp_err_t i2cReadTmag5273Int16(i2c_master_dev_handle_t devHandle,
                                       uint8_t *pConversionStatus)
 {
     esp_err_t espErr = ESP_ERR_INVALID_STATE;
-    uint8_t buffer[4 * 2 + 1];  // Up to four 16-bit words plus a conversion status byte
+    uint16_t bufferInt16[4 + 1];  // Up to four 16-bit words plus a conversion status byte
     size_t readLength;
 
     if ((gI2cMutex != NULL) &&
         (xSemaphoreTake(gI2cMutex,
                         (TickType_t) portMAX_DELAY) == pdPASS)) {
-        if (bufferLength > sizeof(buffer) - 1) {
-           bufferLength = sizeof(buffer) - 1;
+        // -2 to take off the allowance for the conversion status byte
+        if (bufferLength > sizeof(bufferInt16) - 2) {
+           bufferLength = sizeof(bufferInt16) - 2;
         }
         readLength = bufferLength + 1;
 
-        espErr = i2c_master_receive(devHandle, buffer, readLength, -1);
+        espErr = i2c_master_receive(devHandle, (uint8_t *) bufferInt16, readLength, -1);
         if (espErr == ESP_OK) {
             if (pBufferInt16 != NULL) {
-                memcpy(pBufferInt16, buffer, bufferLength);
+                // Need to do an endianness conversion 'cos the
+                // TMAG5273 sends big endian and the ESP32 is
+                // little-endian.
+                for (size_t x = 0; x < (bufferLength >> 1); x++) {
+                    *pBufferInt16 = be16toh(bufferInt16[x]);
+                    pBufferInt16++;
+                }
             }
             if (pConversionStatus != NULL) {
-                *pConversionStatus = buffer[bufferLength];
+                *pConversionStatus = (uint8_t) bufferInt16[bufferLength >> 1];
             }
         } else {
-            printf(LOG_TAG "i2c_master_receive() of %d byte(s) "
+            printf(LOG_TAG "i2c_master_receive() of %d byte(s)"
                    " returned error 0x%02x!\n", readLength, espErr);
         }
 
