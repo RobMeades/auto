@@ -38,9 +38,21 @@
 #define A_PIN_SENSOR_HALL_EFFECT_INT_LEFT      11
 #define A_PIN_SENSOR_HALL_EFFECT_INT_RIGHT     12
 
+// The size of averaging buffer to use
+#define AVERAGING_BUFFER_LENGTH 32
+
 /* ----------------------------------------------------------------
  * TYPES
  * -------------------------------------------------------------- */
+
+// An averaging buffer.
+typedef struct {
+    int32_t reading[AVERAGING_BUFFER_LENGTH];
+    size_t numReadings;
+    int32_t *pOldestReading; // If non-NULL then numReadings = AVERAGING_BUFFER_LENGTH
+    int32_t total;
+    int32_t average;
+} averagingBuffer_t;
 
 /* ----------------------------------------------------------------
  * VARIABLES
@@ -59,21 +71,48 @@ static const i2c_master_bus_config_t gI2cMasterBusConfig = {
 // How many times callbackRead() has been called.
 static size_t gCallbackReadCount = 0;
 
-// Storage for the readings from left-hand TMAG5273.
-static int32_t gReadingLeft[1000];
-
-// Storage for the readings from right-hand TMAG5273.
-static int32_t gReadingRight[1000];
-
-// How many entries have been added to gReadingLeft.
-static size_t gReadingCountLeft = 0;
-
-// How many entries have been added to gReadingRight.
-static size_t gReadingCountRight = 0;
+// Storage for the readings from both TMAG5273s, left and right.
+static averagingBuffer_t gAveragingBuffers[A_SENSOR_HALL_EFFECT_DIRECTION_NUM] = {0};
 
 /* ----------------------------------------------------------------
  * STATIC FUNCTIONS
  * -------------------------------------------------------------- */
+
+// Add a new reading to the averaging buffer for a given direction.
+static void addToAverage(int32_t fluxTeslaX1e6,
+                         aSensorHallEffectDirection_t direction)
+{
+    averagingBuffer_t *pAveragingBuffer;
+
+    if (direction < A_UTIL_ARRAY_COUNT(gAveragingBuffers)) {
+        pAveragingBuffer = &(gAveragingBuffers[direction]);
+        if (pAveragingBuffer->pOldestReading == NULL) {
+            // Haven't yet filled the buffer up, just add the new reading
+            // and update the total
+            pAveragingBuffer->reading[pAveragingBuffer->numReadings] = fluxTeslaX1e6;
+            pAveragingBuffer->numReadings++;
+            pAveragingBuffer->total += fluxTeslaX1e6;
+            if (pAveragingBuffer->numReadings >= A_UTIL_ARRAY_COUNT(pAveragingBuffer->reading)) {
+                pAveragingBuffer->pOldestReading = &(pAveragingBuffer->reading[0]);
+            }
+        } else {
+            // The buffer is full, need to rotate it
+            pAveragingBuffer->total -= *pAveragingBuffer->pOldestReading;
+            *pAveragingBuffer->pOldestReading = fluxTeslaX1e6;
+            pAveragingBuffer->total += fluxTeslaX1e6;
+            pAveragingBuffer->pOldestReading++;
+            if (pAveragingBuffer->pOldestReading >= pAveragingBuffer->reading + A_UTIL_ARRAY_COUNT(pAveragingBuffer->reading)) {
+                pAveragingBuffer->pOldestReading = &(pAveragingBuffer->reading[0]);
+            }
+        }
+
+        if (pAveragingBuffer->numReadings > 0) {
+            // Note: the average becomes an unsigned value unless the
+            // denominator is cast to an integer
+            pAveragingBuffer->average = pAveragingBuffer->total / (int) pAveragingBuffer->numReadings;
+        }
+    }
+}
 
 // Callback for magnetic flux readings from the hall effect sensors.
 static void callbackRead(aSensorHallEffectDirection_t direction,
@@ -83,18 +122,7 @@ static void callbackRead(aSensorHallEffectDirection_t direction,
     (void) pParameter;
 
     gCallbackReadCount++;
-    if (direction == 0) {
-        if (gReadingCountLeft < sizeof(gReadingLeft) / sizeof(gReadingLeft[0])) {
-            gReadingLeft[gReadingCountLeft] = fluxTeslaX1e6;
-            gReadingCountLeft++;
-        }
-    }
-    if (direction == 1) {
-        if (gReadingCountRight < sizeof(gReadingRight) / sizeof(gReadingRight[0])) {
-            gReadingRight[gReadingCountRight] = fluxTeslaX1e6;
-            gReadingCountRight++;
-        }
-    }
+    addToAverage(fluxTeslaX1e6, direction);
 }
 
 /* ----------------------------------------------------------------
@@ -105,85 +133,42 @@ void app_main(void)
 {
     esp_err_t espErr;
     i2c_master_bus_handle_t busHandle;
-    int64_t sum;
-    int32_t rangeUpper;
-    int32_t rangeLower;
 
     // Open the I2C bus
     espErr = i2c_new_master_bus(&gI2cMasterBusConfig, &busHandle);
     if (espErr == ESP_OK) {
-        for (size_t x = 0; (espErr == ESP_OK) && (x < 2); x++) {
-            // Initialise the hall effect stuff
-            espErr = aSensorHallEffectInit(busHandle, A_PIN_SENSOR_HALL_EFFECT_DISABLE_LEFT,
-                                           A_PIN_SENSOR_HALL_EFFECT_DISABLE_RIGHT);
+        // Initialise the hall effect stuff
+        espErr = aSensorHallEffectInit(busHandle, A_PIN_SENSOR_HALL_EFFECT_DISABLE_LEFT,
+                                       A_PIN_SENSOR_HALL_EFFECT_DISABLE_RIGHT);
+        if (espErr == ESP_OK) {
+            // Open the hall effect stuff
+            espErr = aSensorHallEffectOpen(busHandle);
             if (espErr == ESP_OK) {
-                // Open the hall effect stuff
-                espErr = aSensorHallEffectOpen(busHandle);
+                // Start the hall effect stuff reading
+                espErr = aSensorHallEffectReadStart(callbackRead, NULL,
+                                                    A_PIN_SENSOR_HALL_EFFECT_INT_LEFT,
+                                                    A_PIN_SENSOR_HALL_EFFECT_INT_RIGHT);
                 if (espErr == ESP_OK) {
-                    // Start the hall effect stuff reading
-                    espErr = aSensorHallEffectReadStart(callbackRead, NULL,
-                                                        A_PIN_SENSOR_HALL_EFFECT_INT_LEFT,
-                                                        A_PIN_SENSOR_HALL_EFFECT_INT_RIGHT);
-                    if (espErr == ESP_OK) {
-                        // Wait a little while before stopping
-                        printf("Waiting for readings.\n");
-                        aUtilDelayMs(5000);
-                        aSensorHallEffectReadStop();
-                        printf("Callback called %d time(s), stored %d left reading(s),"
-                               " %d right reading(s), here are the values in micro-Tesla:\n",
-                               gCallbackReadCount, gReadingCountLeft,
-                               gReadingCountRight);
-                        if (gReadingCountRight > 0) {
-                            sum = 0;
-                            rangeUpper = gReadingLeft[0];
-                            rangeLower = rangeUpper;
-                            for (size_t y = 0; y < gReadingCountLeft; y++) {
-                                printf("%d ", (int) gReadingLeft[y]);
-                                sum += gReadingLeft[y];
-                                if (gReadingLeft[y] > rangeUpper) {
-                                    rangeUpper = gReadingLeft[y];
-                                }
-                                if (gReadingLeft[y] < rangeLower) {
-                                    rangeLower = gReadingLeft[y];
-                                }
-                            }
-                            printf("\nAverage %lld, upper %d, lower %d, range %d.\n",
-                                   sum / gReadingCountLeft, (int) rangeUpper, (int) rangeLower,
-                                   (int) (rangeUpper - rangeLower));
-                        }
-                        if (gReadingCountLeft > 0) {
-                            sum = 0;
-                            rangeUpper = gReadingRight[0];
-                            rangeLower = rangeUpper;
-                            for (size_t y = 0; y < gReadingCountRight; y++) {
-                                printf("%d ", (int) gReadingRight[y]);
-                                sum += gReadingRight[y];
-                                if (gReadingRight[y] > rangeUpper) {
-                                    rangeUpper = gReadingRight[y];
-                                }
-                                if (gReadingRight[y] < rangeLower) {
-                                    rangeLower = gReadingRight[y];
-                                }
-                            }
-                            printf("\nAverage %lld, upper %d, lower %d, range %d.\n",
-                                   sum / gReadingCountRight, (int) rangeUpper, (int) rangeLower,
-                                   (int) (rangeUpper - rangeLower));
-                        }
-                        gCallbackReadCount = 0;
-                        gReadingCountLeft = 0;
-                        gReadingCountRight = 0;
-                    } else {
-                        printf("Unable to start read of hall effect sensors (0x%02x)!\n", espErr);
+                    printf("Reading (in micro-Teslas); if this is the ESP-IDF monitor program, press CTRL ] to terminate:\n");
+                    while (1) {
+                        // Print the readings out
+                        printf("%10d readings: %6d     <--> %6d                \n", gCallbackReadCount,
+                               (int) gAveragingBuffers[A_SENSOR_HALL_EFFECT_DIRECTION_LEFT].average,
+                               (int) gAveragingBuffers[A_SENSOR_HALL_EFFECT_DIRECTION_RIGHT].average);
+                        // Don't crowd the output and let the idle task in
+                        aUtilDelayMs(100);
                     }
-                    aSensorHallEffectClose();
-                    printf("Finished.\n");
                 } else {
-                    printf("Unable to open hall effect sensors (0x%02x)!\n", espErr);
+                    printf("Unable to start read of hall effect sensors (0x%02x)!\n", espErr);
                 }
-                aSensorHallEffectDeinit();
+                aSensorHallEffectClose();
+                printf("Finished.\n");
             } else {
-                printf("Unable to initialise hall effect sensors (0x%02x)!\n", espErr);
+                printf("Unable to open hall effect sensors (0x%02x)!\n", espErr);
             }
+            aSensorHallEffectDeinit();
+        } else {
+            printf("Unable to initialise hall effect sensors (0x%02x)!\n", espErr);
         }
         i2c_del_master_bus(busHandle);
     } else {

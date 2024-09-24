@@ -29,6 +29,10 @@ extern "C" {
  * COMPILE-TIME MACROS
  * -------------------------------------------------------------- */
 
+/** Compute the number of elements in an array.
+ */
+#define A_UTIL_ARRAY_COUNT(array) (sizeof(array) / sizeof(array[0]))
+
 /* ----------------------------------------------------------------
  * TYPES
  * -------------------------------------------------------------- */

@@ -38,7 +38,8 @@ extern "C" {
  */
 typedef enum {
     A_SENSOR_HALL_EFFECT_DIRECTION_LEFT,
-    A_SENSOR_HALL_EFFECT_DIRECTION_RIGHT
+    A_SENSOR_HALL_EFFECT_DIRECTION_RIGHT,
+    A_SENSOR_HALL_EFFECT_DIRECTION_NUM
 } aSensorHallEffectDirection_t;
 
 /** Definition of a function that will receive readings from a

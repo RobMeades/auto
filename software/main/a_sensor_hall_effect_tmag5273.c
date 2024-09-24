@@ -287,7 +287,7 @@ static void pinDisableSet(gpio_num_t pinDisable,
     bool found = false;
     aTmag5273Device_t *pTmag5273Device;
 
-    for (size_t x = 0; !found && (x < sizeof(gTmag5273) / sizeof(gTmag5273[0])); x++) {
+    for (size_t x = 0; !found && (x < A_UTIL_ARRAY_COUNT(gTmag5273)); x++) {
         pTmag5273Device = &(gTmag5273[x]);
         if (pTmag5273Device->direction == direction) {
             pTmag5273Device->pinDisable = pinDisable;
@@ -787,7 +787,7 @@ esp_err_t aSensorHallEffectOpen(i2c_master_bus_handle_t busHandle)
     uint8_t buffer[3] = {0};
 
     // Add and configure the devices
-    for (size_t x = 0; (espErr == ESP_OK) && (x < sizeof(gTmag5273) / sizeof(gTmag5273[0])); x++) {
+    for (size_t x = 0; (espErr == ESP_OK) && (x < A_UTIL_ARRAY_COUNT(gTmag5273)); x++) {
         pTmag5273Device = &(gTmag5273[x]);
         espErr = i2cAddDevice(busHandle, pTmag5273Device->i2cAddress,
                               &(pTmag5273Device->devHandle));
@@ -832,7 +832,7 @@ esp_err_t aSensorHallEffectOpen(i2c_master_bus_handle_t busHandle)
 
     if (espErr != ESP_OK) {
         // Tidy-up on error
-        for (size_t x = 0; x < sizeof(gTmag5273) / sizeof(gTmag5273[0]); x++) {
+        for (size_t x = 0; x < A_UTIL_ARRAY_COUNT(gTmag5273); x++) {
             pTmag5273Device = &(gTmag5273[x]);
             if (pTmag5273Device->devHandle != NULL) {
                 i2c_master_bus_rm_device(pTmag5273Device->devHandle);
@@ -849,7 +849,7 @@ void aSensorHallEffectClose()
 {
     aTmag5273Device_t *pTmag5273Device;
 
-    for (size_t x = 0; x < sizeof(gTmag5273) / sizeof(gTmag5273[0]); x++) {
+    for (size_t x = 0; x < A_UTIL_ARRAY_COUNT(gTmag5273); x++) {
         pTmag5273Device = &(gTmag5273[x]);
         readStop(pTmag5273Device);
         i2cRemoveDevice(pTmag5273Device);
@@ -866,8 +866,7 @@ esp_err_t aSensorHallEffectReadStart(aSensorHallEffectCallbackRead_t pCallbackRe
     aTmag5273Device_t *pTmag5273Device;
     char buffer[16];
 
-    for (size_t x = 0; (espErr == ESP_OK) && 
-                       x < sizeof(gTmag5273) / sizeof(gTmag5273[0]); x++) {
+    for (size_t x = 0; (espErr == ESP_OK) && (x < A_UTIL_ARRAY_COUNT(gTmag5273)); x++) {
         pTmag5273Device = &(gTmag5273[x]);
         // For each opened device, if there's no read task then start one
         if ((pTmag5273Device->devHandle != NULL) &&
@@ -969,7 +968,7 @@ void aSensorHallEffectReadStop()
 {
     aTmag5273Device_t *pTmag5273Device;
 
-    for (size_t x = 0; x < sizeof(gTmag5273) / sizeof(gTmag5273[0]); x++) {
+    for (size_t x = 0; x < A_UTIL_ARRAY_COUNT(gTmag5273); x++) {
         pTmag5273Device = &(gTmag5273[x]);
         if (pTmag5273Device->devHandle != NULL) {
             readStop(pTmag5273Device);
@@ -983,7 +982,7 @@ void aSensorHallEffectDeinit()
     aTmag5273Device_t *pTmag5273Device;
 
     // Stop any reading and disable each device to power it down
-    for (size_t x = 0; x < sizeof(gTmag5273) / sizeof(gTmag5273[0]); x++) {
+    for (size_t x = 0; x < A_UTIL_ARRAY_COUNT(gTmag5273); x++) {
         pTmag5273Device = &(gTmag5273[x]);
         if (pTmag5273Device->devHandle != NULL) {
             readStop(pTmag5273Device);
