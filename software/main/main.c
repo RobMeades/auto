@@ -133,6 +133,9 @@ void app_main(void)
 {
     esp_err_t espErr;
     i2c_master_bus_handle_t busHandle;
+    int64_t startTimeMs;
+    int64_t durationSeconds;
+    size_t readingsPerSecond = 0;
 
     // Open the I2C bus
     espErr = i2c_new_master_bus(&gI2cMasterBusConfig, &busHandle);
@@ -150,13 +153,24 @@ void app_main(void)
                                                     A_PIN_SENSOR_HALL_EFFECT_INT_RIGHT);
                 if (espErr == ESP_OK) {
                     printf("Reading (in micro-Teslas); if this is the ESP-IDF monitor program, press CTRL ] to terminate:\n");
+                    startTimeMs = aUtilTimeSinceBootMs();
                     while (1) {
-                        // Print the readings out
-                        printf("%10d readings: %6d     <--> %6d                \n", gCallbackReadCount,
+                        // Print the readings out; gCallbackReadCount / 2 as two callbacks
+                        // are required, one from the left-hand hall effect sensor and
+                        // one from the right-hand hall effect sensor
+                        // The extra characters on the end make the line long enough that
+                        // it gets flushed immediately; without them the output is jerky
+                        printf("%10d (%4d/second) reading:       %6d     <--> %6d                \n",
+                               gCallbackReadCount >> 1, readingsPerSecond,
                                (int) gAveragingBuffers[A_SENSOR_HALL_EFFECT_DIRECTION_LEFT].average,
                                (int) gAveragingBuffers[A_SENSOR_HALL_EFFECT_DIRECTION_RIGHT].average);
-                        // Don't crowd the output and let the idle task in
+                        // Don't crowd the output, let the idle task in
                         aUtilDelayMs(100);
+                        durationSeconds = (aUtilTimeSinceBootMs() - startTimeMs) / 1000;
+                        if (durationSeconds > 0) {
+                            // Divide by two for the same reason as above
+                            readingsPerSecond = (gCallbackReadCount / durationSeconds) >> 1;
+                        }
                     }
                 } else {
                     printf("Unable to start read of hall effect sensors (0x%02x)!\n", espErr);
