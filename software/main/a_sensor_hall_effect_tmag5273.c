@@ -38,7 +38,7 @@
  * -------------------------------------------------------------- */
 
 // Prefix for all logging prints from this file.
-#define LOG_TAG "A_SENSOR_HALL_EFFECT: "
+#define A_LOG_TAG "A_SENSOR_HALL_EFFECT: "
 
 #ifndef A_READ_TASK_STACK_SIZE_BYTES
 // Stack size for the hall effect sensor read task (in bytes).
@@ -248,11 +248,11 @@ static esp_err_t pinOutputSet(gpio_num_t pin, int32_t level)
     if (espErr == ESP_OK) {
         espErr = gpio_config(&gpioConfig);
         if (espErr != ESP_OK) {
-            printf(LOG_TAG "unable to configure pin %d as an output"
+            printf(A_LOG_TAG "unable to configure pin %d as an output"
                    " (error 0x%02x)!\n", (int) pin, espErr);
         }
     } else {
-        printf(LOG_TAG "unable to set pin %d to level %d"
+        printf(A_LOG_TAG "unable to set pin %d to level %d"
                " (error 0x%02x)!\n", (int) pin, (int) level, espErr);
     }
 
@@ -273,7 +273,7 @@ static esp_err_t pinIntSet(gpio_num_t pin)
 
     espErr = gpio_config(&gpioConfig);
     if (espErr != ESP_OK) {
-        printf(LOG_TAG "unable to configure pin %d as an"
+        printf(A_LOG_TAG "unable to configure pin %d as an"
                " interrupt source (error 0x%02x)!\n", (int) pin, espErr);
     }
 
@@ -320,12 +320,12 @@ static esp_err_t i2cAddDevice(i2c_master_bus_handle_t busHandle,
             if (pDevHandle != NULL) {
                 espErr = i2c_master_bus_add_device(busHandle, &i2cDeviceConfig, pDevHandle);
                 if (espErr != ESP_OK) {
-                    printf(LOG_TAG "unable to add TMAG5273 at address %d"
+                    printf(A_LOG_TAG "unable to add TMAG5273 at address %d"
                            " as an I2C device (0x%02x)!\n", i2cAddress, espErr);
                 }
             }
         } else {
-            printf(LOG_TAG "unable to find a TMAG5273 at"
+            printf(A_LOG_TAG "unable to find a TMAG5273 at"
                    " I2C address 0x%02x (0x%02x)!\n", i2cAddress, espErr);
         }
 
@@ -371,7 +371,7 @@ static esp_err_t i2cWriteTmag5273(i2c_master_dev_handle_t devHandle, uint8_t reg
         if (espErr == ESP_OK) {
             espErr = i2c_master_transmit(devHandle, writeBuffer, writeBufferLength, -1);
             if (espErr != ESP_OK) {
-                printf(LOG_TAG "i2c_master_transmit() of %d byte(s) to"
+                printf(A_LOG_TAG "i2c_master_transmit() of %d byte(s) to"
                        " TMAG5273 register 0x%02x returned error 0x%02x!\n",
                        bufferLength, reg, espErr);
             }
@@ -412,7 +412,7 @@ static esp_err_t i2cReadTmag5273Int16(i2c_master_dev_handle_t devHandle,
             if (pBufferInt16 != NULL) {
                 // Need to do an endianness conversion 'cos the
                 // TMAG5273 sends big endian and the ESP32 is
-                // little-endian.
+                // little-endian
                 for (size_t x = 0; x < (bufferLength >> 1); x++) {
                     *pBufferInt16 = be16toh(bufferInt16[x]);
                     pBufferInt16++;
@@ -422,7 +422,7 @@ static esp_err_t i2cReadTmag5273Int16(i2c_master_dev_handle_t devHandle,
                 *pConversionStatus = (uint8_t) bufferInt16[bufferLength >> 1];
             }
         } else {
-            printf(LOG_TAG "i2c_master_receive() of %d byte(s)"
+            printf(A_LOG_TAG "i2c_master_receive() of %d byte(s)"
                    " returned error 0x%02x!\n", readLength, espErr);
         }
 
@@ -448,7 +448,7 @@ static esp_err_t i2cReadTmag5273Reg(i2c_master_dev_handle_t devHandle,
         espErr = i2c_master_transmit_receive(devHandle, &regAddress, 1,
                                              pBuffer, bufferLength, -1);
         if (espErr != ESP_OK) {
-            printf(LOG_TAG "i2c_master_transmit_receive() of"
+            printf(A_LOG_TAG "i2c_master_transmit_receive() of"
                    " %d byte(s) returned error 0x%02x!\n", bufferLength, espErr);
         }
 
@@ -570,7 +570,7 @@ static void readTask(void *pParameter)
         (xSemaphoreTake(pTmag5273Device->readTaskMutex,
                         (TickType_t) portMAX_DELAY) == pdPASS)) {
 
-        printf(LOG_TAG "started reading %s hall effect sensor.\n",
+        printf(A_LOG_TAG "started reading %s hall effect sensor.\n",
                pTmag5273Device->pNameStr);
         // While we haven't been asked to abort...
         while (!pTmag5273Device->readTaskAbort) {
@@ -595,7 +595,7 @@ static void readTask(void *pParameter)
             }
         }
 
-        printf(LOG_TAG "stopped reading %s hall effect sensor.\n",
+        printf(A_LOG_TAG "stopped reading %s hall effect sensor.\n",
                pTmag5273Device->pNameStr);
         // Give the task mutex to indicate that we are no longer running
         xSemaphoreGive(pTmag5273Device->readTaskMutex);
@@ -634,7 +634,7 @@ static void readStop(aTmag5273Device_t *pTmag5273Device)
                 // again below
                 pTmag5273Device->readTask = NULL;
             } else {
-                printf(LOG_TAG "%s hall effect sensor read task"
+                printf(A_LOG_TAG "%s hall effect sensor read task"
                        " did not exit (waited about %lld ms)!\n",
                        pTmag5273Device->pNameStr, aUtilTimeSinceBootMs() - startTimeMs);
             }
@@ -705,50 +705,50 @@ esp_err_t aSensorHallEffectInit(i2c_master_bus_handle_t busHandle,
         // Enable just the right-hand hall effect sensor to begin with
         espErr = pinOutputSet(pinDisableRight, 0);
         if (espErr == ESP_OK) {
-            printf(LOG_TAG "right-hand TMAG5273 hall effect sensor enabled.\n");
+            printf(A_LOG_TAG "right-hand TMAG5273 hall effect sensor enabled.\n");
             // Disable the left-hand hall effect sensor while we check, and if necessary set,
             // the I2C address of the right-hand one
             espErr = pinOutputSet(pinDisableLeft, 1);
             if (espErr == ESP_OK) {
                 aUtilDelayMs(10);
-                printf(LOG_TAG "probing for right-hand TMAG5273 hall effect"
+                printf(A_LOG_TAG "probing for right-hand TMAG5273 hall effect"
                        " sensor at I2C address 0x%02x...\n", A_I2C_ADDRESS_TMAG5273_SPARKFUN_RIGHT);
                 espErr = i2c_master_probe(busHandle, A_I2C_ADDRESS_TMAG5273_SPARKFUN_RIGHT, -1);
                 if (espErr == ESP_OK) {
-                    printf(LOG_TAG "found TMAG5273 already at I2C address 0x%02x.\n",
+                    printf(A_LOG_TAG "found TMAG5273 already at I2C address 0x%02x.\n",
                             A_I2C_ADDRESS_TMAG5273_SPARKFUN_RIGHT);
                 } else {
-                    printf(LOG_TAG "no TMAG5273 found at I2C address 0x%02x,"
+                    printf(A_LOG_TAG "no TMAG5273 found at I2C address 0x%02x,"
                            " trying the default I2C address (0x%02x)...\n",
                            A_I2C_ADDRESS_TMAG5273_SPARKFUN_RIGHT, i2cDeviceConfig.device_address);
                     espErr = i2c_master_probe(busHandle, i2cDeviceConfig.device_address, -1);
                     if (espErr == ESP_OK) {
-                        printf(LOG_TAG "found a TMAG5273 at I2C address 0x%02x,"
+                        printf(A_LOG_TAG "found a TMAG5273 at I2C address 0x%02x,"
                                " assumed to be the right-hand hall effect sensor.\n",
                                i2cDeviceConfig.device_address);
                         espErr = i2c_master_bus_add_device(busHandle, &i2cDeviceConfig, &devHandle);
                         if (espErr == ESP_OK) {
-                            printf(LOG_TAG "changing I2C address of this TMAG5273"
+                            printf(A_LOG_TAG "changing I2C address of this TMAG5273"
                                    " to 0x%02x...\n", A_I2C_ADDRESS_TMAG5273_SPARKFUN_RIGHT);
                             buffer[0] = ((A_I2C_ADDRESS_TMAG5273_SPARKFUN_RIGHT) << 1) | 0x01;
                             espErr = i2cWriteTmag5273(devHandle, A_TMAG5273_REG_ADDRESS_I2C_ADDRESS, buffer, 1);
                             if (espErr == ESP_OK) {
                                 espErr = i2c_master_probe(busHandle, A_I2C_ADDRESS_TMAG5273_SPARKFUN_RIGHT, -1);
                                 if (espErr == ESP_OK) {
-                                    printf(LOG_TAG "TMAG5273 I2C address changed successfully.\n");
+                                    printf(A_LOG_TAG "TMAG5273 I2C address changed successfully.\n");
                                 } else {
-                                    printf(LOG_TAG "unable to find a TMAG5273 at"
+                                    printf(A_LOG_TAG "unable to find a TMAG5273 at"
                                            " I2C address 0x%02x after I2C address change (0x%02x)!\n",
                                            A_I2C_ADDRESS_TMAG5273_SPARKFUN_RIGHT, espErr);
                                 }
                             } else {
-                                printf(LOG_TAG "unable to change I2C address of"
+                                printf(A_LOG_TAG "unable to change I2C address of"
                                        " TMAG5273 (0x%02x)!\n", espErr);
                             }
                             i2c_master_bus_rm_device(devHandle);
                         }
                     } else {
-                        printf(LOG_TAG "unable to find any TMAG5273 devices"
+                        printf(A_LOG_TAG "unable to find any TMAG5273 devices"
                                " (I2C address 0x%02x) (0x%02x)!\n", i2cDeviceConfig.device_address,
                                espErr);
                     }
@@ -758,7 +758,7 @@ esp_err_t aSensorHallEffectInit(i2c_master_bus_handle_t busHandle,
                 if (espErr == ESP_OK) {
                     espErr = pinOutputSet(pinDisableLeft, 0);
                     if (espErr == ESP_OK) {
-                        printf(LOG_TAG "left-hand TMAG5273 hall effect sensor enabled.\n");
+                        printf(A_LOG_TAG "left-hand TMAG5273 hall effect sensor enabled.\n");
                         aUtilDelayMs(10);
                         // Store the disable pins so that we can deinitialise later
                         pinDisableSet(pinDisableLeft, A_SENSOR_HALL_EFFECT_DIRECTION_LEFT);
@@ -766,12 +766,12 @@ esp_err_t aSensorHallEffectInit(i2c_master_bus_handle_t busHandle,
                     }
                 }
             } else {
-                printf(LOG_TAG "unable to disable the left-hand hall effect"
+                printf(A_LOG_TAG "unable to disable the left-hand hall effect"
                        " sensor (disable pin %d) in order to configure the I2C address of"
                        " the right-hand one (0x%02x)!\n", pinDisableLeft, espErr);
             }
         } else {
-            printf(LOG_TAG "unable to enable the right-hand hall effect"
+            printf(A_LOG_TAG "unable to enable the right-hand hall effect"
                    " sensor (pin %d) (0x%02x)!\n", pinDisableRight, espErr);
         }
     }
@@ -805,26 +805,26 @@ esp_err_t aSensorHallEffectOpen(i2c_master_bus_handle_t busHandle)
                     pTmag5273Device->version = buffer[0] & 0x03;
                     // Clear the power-on reset flag
                     tmag5273PowerOnResetClear(pTmag5273Device);
-                    printf(LOG_TAG "%s hall effect sensor opened,"
+                    printf(A_LOG_TAG "%s hall effect sensor opened,"
                            " ranges %s, manufacturer ID 0x%04x.\n",
                            pTmag5273Device->pNameStr,
                            gpTmag5273Version[pTmag5273Device->version],
                            (((uint16_t) buffer[1]) << 8) +  buffer[2]);
                 } else {
-                    printf(LOG_TAG "unable to read TMAG5273 %s"
+                    printf(A_LOG_TAG "unable to read TMAG5273 %s"
                            " (I2C address 0x%02x) device/manufacturer ID"
                            " registers (register address 0x%02x) (0x%02x).\n",
                            pTmag5273Device->pNameStr, pTmag5273Device->i2cAddress,
                            A_TMAG5273_REG_ADDRESS_DEVICE_ID, espErr);
                 }
             } else {
-                printf(LOG_TAG "unable to set TMAG5273 %s"
+                printf(A_LOG_TAG "unable to set TMAG5273 %s"
                        " (I2C address 0x%02x) read mode to %d (0x%02x).\n",
                        pTmag5273Device->pNameStr, pTmag5273Device->i2cAddress,
                        A_TMAG5273_READ_MODE_STANDARD_3_BYTE, espErr);
             }
         } else {
-            printf(LOG_TAG "unable to add TMAG5273 %s at"
+            printf(A_LOG_TAG "unable to add TMAG5273 %s at"
                    " I2C address 0x%02x (0x%02x)!", pTmag5273Device->pNameStr,
                    pTmag5273Device->i2cAddress, espErr);
         }

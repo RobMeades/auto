@@ -39,7 +39,7 @@
 #define A_PIN_SENSOR_HALL_EFFECT_INT_RIGHT     12
 
 // The size of averaging buffer to use
-#define AVERAGING_BUFFER_LENGTH 32
+#define A_AVERAGING_BUFFER_LENGTH 32
 
 /* ----------------------------------------------------------------
  * TYPES
@@ -47,9 +47,9 @@
 
 // An averaging buffer.
 typedef struct {
-    int32_t reading[AVERAGING_BUFFER_LENGTH];
+    int32_t reading[A_AVERAGING_BUFFER_LENGTH];
     size_t numReadings;
-    int32_t *pOldestReading; // If non-NULL then numReadings = AVERAGING_BUFFER_LENGTH
+    int32_t *pOldestReading; // non-NULL only when numReadings = A_AVERAGING_BUFFER_LENGTH
     int32_t total;
     int32_t average;
 } averagingBuffer_t;
@@ -157,9 +157,9 @@ void app_main(void)
                     while (1) {
                         // Print the readings out; gCallbackReadCount / 2 as two callbacks
                         // are required, one from the left-hand hall effect sensor and
-                        // one from the right-hand hall effect sensor
-                        // The extra characters on the end make the line long enough that
-                        // it gets flushed immediately; without them the output is jerky
+                        // one from the right-hand hall effect sensor, for a single reading
+                        // The extra characters on the end below make the line long enough that
+                        // it gets flushed immediately; without that the output is jerky
                         printf("%10d (%4d/second) reading:       %6d     <--> %6d                \n",
                                gCallbackReadCount >> 1, readingsPerSecond,
                                (int) gAveragingBuffers[A_SENSOR_HALL_EFFECT_DIRECTION_LEFT].average,

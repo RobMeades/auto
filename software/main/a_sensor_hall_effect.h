@@ -122,8 +122,8 @@ esp_err_t aSensorHallEffectReadStart(aSensorHallEffectCallbackRead_t pCallbackRe
                                      gpio_num_t pinIntLeft,
                                      gpio_num_t pinIntRight);
 
-/** Stop reading of the hall effect sensors that was started with a
- * call to aSensorHallEffectReadStart().  Once this has returned
+/** Stop the reading of the hall effect sensors that was started with
+ * a call to aSensorHallEffectReadStart().  Once this has returned
  * pCallbackRead will no longer be called.
  */
 void aSensorHallEffectReadStop();
