@@ -52,7 +52,7 @@ typedef struct {
     int32_t *pOldestReading; // non-NULL only when numReadings = A_AVERAGING_BUFFER_LENGTH
     int32_t total;
     int32_t average;
-} averagingBuffer_t;
+} aAveragingBuffer_t;
 
 /* ----------------------------------------------------------------
  * VARIABLES
@@ -72,7 +72,7 @@ static const i2c_master_bus_config_t gI2cMasterBusConfig = {
 static size_t gCallbackReadCount = 0;
 
 // Storage for the readings from both TMAG5273s, left and right.
-static averagingBuffer_t gAveragingBuffers[A_SENSOR_HALL_EFFECT_DIRECTION_NUM] = {0};
+static aAveragingBuffer_t gBuffers[A_SENSOR_HALL_EFFECT_DIRECTION_NUM] = {0};
 
 /* ----------------------------------------------------------------
  * STATIC FUNCTIONS
@@ -82,10 +82,10 @@ static averagingBuffer_t gAveragingBuffers[A_SENSOR_HALL_EFFECT_DIRECTION_NUM] =
 static void addToAverage(int32_t fluxTeslaX1e6,
                          aSensorHallEffectDirection_t direction)
 {
-    averagingBuffer_t *pAveragingBuffer;
+    aAveragingBuffer_t *pAveragingBuffer;
 
-    if (direction < A_UTIL_ARRAY_COUNT(gAveragingBuffers)) {
-        pAveragingBuffer = &(gAveragingBuffers[direction]);
+    if (direction < A_UTIL_ARRAY_COUNT(gBuffers)) {
+        pAveragingBuffer = &(gBuffers[direction]);
         if (pAveragingBuffer->pOldestReading == NULL) {
             // Haven't yet filled the buffer up, just add the new reading
             // and update the total
@@ -162,8 +162,8 @@ void app_main(void)
                         // it gets flushed immediately; without that the output is jerky
                         printf("%10d (%4d/second) reading:       %6d     <--> %6d                \n",
                                gCallbackReadCount >> 1, readingsPerSecond,
-                               (int) gAveragingBuffers[A_SENSOR_HALL_EFFECT_DIRECTION_LEFT].average,
-                               (int) gAveragingBuffers[A_SENSOR_HALL_EFFECT_DIRECTION_RIGHT].average);
+                               (int) gBuffers[A_SENSOR_HALL_EFFECT_DIRECTION_LEFT].average,
+                               (int) gBuffers[A_SENSOR_HALL_EFFECT_DIRECTION_RIGHT].average);
                         // Don't crowd the output, let the idle task in
                         aUtilDelayMs(100);
                         durationSeconds = (aUtilTimeSinceBootMs() - startTimeMs) / 1000;
