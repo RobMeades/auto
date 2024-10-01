@@ -12,4 +12,6 @@ idf.py -p <port> flash monitor
 
 ...where `<port>` is replaced by the serial port on which the ESP32S3 chip inside the Auto can be found.
 
+If you have [ESP-IDF installed inside VSCode](https://docs.espressif.com/projects/esp-idf/en/v4.2/esp32/get-started/vscode-setup.html) then open this folder and, once you have [configured the serial port](https://github.com/espressif/vscode-esp-idf-extension/?tab=readme-ov-file#using-the-esp-idf-extension-for-vscode), `ctrl-e` followed by `d` will do the same thing.
+
 Press `CTRL ]` to terminate the monitor program.
