@@ -33,9 +33,24 @@ extern "C" {
  */
 #define A_UTIL_ARRAY_COUNT(array) (sizeof(array) / sizeof(array[0]))
 
+/** Helper to make sure that lock/unlock pairs are always balanced.
+ */
+#define A_MUTEX_LOCK(x)      { xSemaphoreTake(x, (TickType_t) portMAX_DELAY)
+
+/** Helper to make sure that lock/unlock pairs are always balanced.
+ */
+#define A_MUTEX_UNLOCK(x)    } xSemaphoreGive(x)
+
 /* ----------------------------------------------------------------
  * TYPES
  * -------------------------------------------------------------- */
+
+/** Structure to hold a linked-list entry.
+ */
+typedef struct aUtilLinkedList_t {
+    void *pEntry;
+    struct aUtilLinkedList_t *pNext;
+} aUtilLinkedList_t;
 
 /* ----------------------------------------------------------------
  * FUNCTIONS
@@ -55,6 +70,64 @@ int64_t aUtilTimeSinceBootMs();
  * @param timeMs  the time to delay for in milliseconds.
  */
 void aUtilDelayMs(size_t timeMs);
+
+/** Set an MCU pin to be an output at the given level; the level
+ * on the output pin can be read-back afterwards.
+ *
+ * @param pin   the MCU pin to set.
+ * @param level the level, 0 for low, else high.
+ * @return      ESP_OK on success, else error code.
+ */
+esp_err_t aUtilPinOutputSet(gpio_num_t pin, int32_t level);
+
+/** Add an entry to the start of a linked list.  This function is
+ * NOT thread-safe.
+ *
+ * @param[in] ppList  a pointer to the root of the linked list,
+ *                    cannot be NULL.
+ * @param[in] pEntry  a pointer to the entry to add to the linked
+ *                    list.
+ * @return            true if addition of the entry was successful.
+ */
+bool aUtilLinkedListAdd(aUtilLinkedList_t **ppList, void *pEntry);
+
+/** Remove an entry from a linked list.  This function is NOT thread-safe.
+ *
+ * @param[in] ppList  a pointer to the root of the linked list,
+ *                    cannot be NULL.
+ * @param[in] pEntry  the entry to remove; the memory pointed-to is not
+ *                    touched in any way, it is up to the caller to free
+ *                    it if required.
+ */
+void aUtilLinkedListRemove(aUtilLinkedList_t **ppList, void *pEntry);
+
+/** Get the first entry in a linked list.  This function is NOT
+ * thread-safe and calls to pAUtilLinkedListGetNext() after calling
+ * this function should not be interleaved with calls to
+ * aUtilLinkedListAdd() or aUtilLinkedListRemove().
+ *
+ * @param[in] ppList  a pointer to the root of the linked list,
+ *                    cannot be NULL.
+ * @param[in] ppSaved workspace required by this function, may be
+ *                    NULL if you do not plan to call pAUtilLinkedListGetNext().
+ * @return            the first entry in the list; NULL if there are
+ *                    no entries.
+ */
+void *pAUtilLinkedListGetFirst(aUtilLinkedList_t **ppList,
+                               aUtilLinkedList_t **ppSaved);
+
+/** Get the next entry in a linked list; may be called after
+ * pAUtilLinkedListGetFirst() to get subsequent entries.
+ * This function is NOT thread-safe and calls to
+ * this function should not be interleaved with calls to
+ * aUtilLinkedListAdd() or aUtilLinkedListRemove().
+ *
+ * @param[in] ppSaved the ppSaved that was passed to
+ *                    pAUtilLinkedListGetFirstworkspace().
+ * @return            the next entry in the list; NULL if there are
+ *                    no more entries.
+ */
+void *pAUtilLinkedListGetNext(aUtilLinkedList_t **ppSaved);
 
 #ifdef __cplusplus
 }

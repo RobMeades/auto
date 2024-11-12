@@ -20,6 +20,8 @@
 /** @file
  * @brief Definition of the hall effect sensor API, used to control a
  * pair of hall effect sensors, one facing left, one facing right.
+ * This API is not thread-safe, though readings from the hall effect
+ * sensors, of course, are.
  */
 
 #ifdef __cplusplus

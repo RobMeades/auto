@@ -22,6 +22,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <endian.h>
+
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
@@ -54,8 +55,6 @@
 // How long to wait for the hall effect sensor read task to exit.
 # define A_READ_TASK_EXIT_WAIT_MS 1000
 #endif
-
-
 
 /* ----------------------------------------------------------------
  * COMPILE-TIME MACROS: I2C
@@ -231,33 +230,6 @@ static int32_t gTmag5273FluxMt[] = {0, 80, 266, 0};
 /* ----------------------------------------------------------------
  * STATIC FUNCTIONS: MISC
  * -------------------------------------------------------------- */
-
-// Set an MCU pin to be an output at the given level.
-static esp_err_t pinOutputSet(gpio_num_t pin, int32_t level)
-{
-    esp_err_t espErr;
-    gpio_config_t gpioConfig = {
-        .intr_type = GPIO_INTR_DISABLE,
-        .mode = GPIO_MODE_INPUT_OUTPUT,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        .pull_up_en = GPIO_PULLUP_DISABLE,
-        .pin_bit_mask =  1ULL << pin
-    };
-
-    espErr = gpio_set_level(pin, level);
-    if (espErr == ESP_OK) {
-        espErr = gpio_config(&gpioConfig);
-        if (espErr != ESP_OK) {
-            printf(A_LOG_TAG "unable to configure pin %d as an output"
-                   " (error 0x%02x)!\n", (int) pin, espErr);
-        }
-    } else {
-        printf(A_LOG_TAG "unable to set pin %d to level %d"
-               " (error 0x%02x)!\n", (int) pin, (int) level, espErr);
-    }
-
-    return espErr;
-}
 
 // Set an MCU pin as an interrupt source.
 static esp_err_t pinIntSet(gpio_num_t pin)
@@ -541,7 +513,7 @@ static esp_err_t tmag5273IntModeSet(aTmag5273Device_t *pTmag5273Device,
 
 // ISR handler function for the TMAG5273 hall effect sensor.
 // pParameter must be a pointer to an aTmag5273Device_t structure.
-static void isrHandler(void *pParameter)
+static IRAM_ATTR void isrHandler(void *pParameter)
 {
     const aTmag5273Device_t *pTmag5273Device = (const aTmag5273Device_t *) pParameter;
     BaseType_t mustYield = false;
@@ -699,16 +671,16 @@ esp_err_t aSensorHallEffectInit(i2c_master_bus_handle_t busHandle,
 
     if (espErr == ESP_OK) {
         // Set both disables in order to reset both sensors
-        pinOutputSet(pinDisableLeft, 1);
-        pinOutputSet(pinDisableRight, 1);
+        aUtilPinOutputSet(pinDisableLeft, 1);
+        aUtilPinOutputSet(pinDisableRight, 1);
         aUtilDelayMs(10);
         // Enable just the right-hand hall effect sensor to begin with
-        espErr = pinOutputSet(pinDisableRight, 0);
+        espErr = aUtilPinOutputSet(pinDisableRight, 0);
         if (espErr == ESP_OK) {
             printf(A_LOG_TAG "right-hand TMAG5273 hall effect sensor enabled.\n");
             // Disable the left-hand hall effect sensor while we check, and if necessary set,
             // the I2C address of the right-hand one
-            espErr = pinOutputSet(pinDisableLeft, 1);
+            espErr = aUtilPinOutputSet(pinDisableLeft, 1);
             if (espErr == ESP_OK) {
                 aUtilDelayMs(10);
                 printf(A_LOG_TAG "probing for right-hand TMAG5273 hall effect"
@@ -756,7 +728,7 @@ esp_err_t aSensorHallEffectInit(i2c_master_bus_handle_t busHandle,
 
                 // Should now have both TMAG5273 devices on different I2C addresses
                 if (espErr == ESP_OK) {
-                    espErr = pinOutputSet(pinDisableLeft, 0);
+                    espErr = aUtilPinOutputSet(pinDisableLeft, 0);
                     if (espErr == ESP_OK) {
                         printf(A_LOG_TAG "left-hand TMAG5273 hall effect sensor enabled.\n");
                         aUtilDelayMs(10);
@@ -989,7 +961,7 @@ void aSensorHallEffectDeinit()
             i2cRemoveDevice(pTmag5273Device);
         }
         if (pTmag5273Device->pinDisable >= 0) {
-            pinOutputSet(pTmag5273Device->pinDisable, 1);
+            aUtilPinOutputSet(pTmag5273Device->pinDisable, 1);
             pTmag5273Device->pinDisable = -1;
         }
     }
