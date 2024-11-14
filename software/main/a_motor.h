@@ -47,8 +47,7 @@ typedef struct {
     gpio_num_t pinMotorControl1;
     gpio_num_t pinMotorControl2;
     bool directionIsAnticlockwise;
-    size_t speedPercent;
-    size_t speedTransitionTimeMs;
+    aPwm_t *pPwm;
 } aMotor_t;
 
 /* ----------------------------------------------------------------
@@ -60,10 +59,13 @@ typedef struct {
  * function will do nothing and return ESP_OK.  Call aMotorDeinit()
  * to deinitialise the API and free resources.
  *
+ * Note: the application must call aPwmInit() to ensure that PWM is
+ * available before aMotorInit() is called.
+ *
  * @param pinEnable  an MCU pin which, when pulled high, enables
  *                   drive to the motors; use -1 if there is no
  *                   such pin.
- * @return           ESP_OK on success, else error code.
+ * @return           ESP_OK on success, else negative error code.
  */
 esp_err_t aMotorInit(gpio_num_t pinEnable);
 

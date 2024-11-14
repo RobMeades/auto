@@ -29,6 +29,7 @@
 #include <driver/ledc.h>
 
 #include <a_util.h>
+#include <a_pwm.h>
 #include <a_motor.h>
 
 /* ----------------------------------------------------------------
@@ -52,22 +53,6 @@
 #define A_TB6612FNG_UNLOCK()            xSemaphoreGive(gMutex);   \
                                     };
 
-// The frequency of PWM output to use, in Hertz.
-#ifndef A_MOTOR_PWM_FREQUENCY_HERTZ
-# define A_MOTOR_PWM_FREQUENCY_HERTZ 100
-#endif
-
-// The resolution of PWM to use, in bits.
-#ifndef A_MOTOR_PWM_RESOLUTION_BITS
-# define A_MOTOR_PWM_RESOLUTION_BITS (LEDC_TIMER_8_BIT)
-#endif
-
-
-// The speed mode of the PWM.
-#ifndef A_MOTOR_PWM_SPEED_MODE
-# define A_MOTOR_PWM_SPEED_MODE (LEDC_LOW_SPEED_MODE)
-#endif
-
 /* ----------------------------------------------------------------
  * TYPES
  * -------------------------------------------------------------- */
@@ -88,37 +73,9 @@ static gpio_num_t gPinEnable = -1;
 // A place to store the last error code from a call to aMotorOpen().
 static esp_err_t gMotorOpenLastErrorCode = ESP_OK;
 
-// Array to track PWM channel occupancy.
-static aMotor_t *gpPwmChannelList[LEDC_CHANNEL_MAX] = {0};
-
-// Array of semaphores to keep track of whether a speed transition
-// is in progress.  MUST have the same number of members as
-// gpPwmChannelList as the same index is used for both.
-static SemaphoreHandle_t gSemaphoreSpeedTransition[LEDC_CHANNEL_MAX] = {0};
-
-// Array to keep track of PWM timers.
-static aMotor_t *gpPwmTimerList[LEDC_TIMER_MAX] = {0};
-
-// NOTE: there are more variables after the static functions.
-
 /* ----------------------------------------------------------------
  * STATIC FUNCTIONS
  * -------------------------------------------------------------- */
-
-// "end of fade operation" callback function.
-// pUserArg should point to the relevant entry in gSemaphoreSpeedTransition,
-static IRAM_ATTR bool pwmTransitionEnd(const ledc_cb_param_t *pParam,
-                                       void *pUserArg)
-{
-    BaseType_t mustYield = false;
-
-    if ((pParam->event == LEDC_FADE_END_EVT) && (pUserArg != NULL)) {
-        // Give the semaphore
-        xSemaphoreGiveFromISR(*(SemaphoreHandle_t *) pUserArg, &mustYield);
-    }
-
-    return mustYield;
-}
 
 // Set the direction pins.
 static esp_err_t setDirectionPinsClockwise(bool clockwiseNotAnticlockwise,
@@ -172,130 +129,22 @@ static esp_err_t setDirectionClockwise(aMotor_t *pMotor,
     return espErr;
 }
 
-// Convert a percentage speed to a duty cycle.
-static size_t percentToDuty(int32_t percent)
-{
-    return ((1 << A_MOTOR_PWM_RESOLUTION_BITS) - 1) * percent / 100;
-}
-
-// Find the given motor in an array of aMotor_t pointers.
-static aMotor_t **ppFindEntry(aMotor_t *pMotor, aMotor_t **ppList,
-                              size_t listSize)
-{
-    aMotor_t **ppEntry = NULL;
-
-    if (ppList != NULL) {
-        for (size_t x = 0; x < listSize; x++) {
-            if (*ppList == pMotor) {
-                ppEntry = ppList;
-                break;
-            }
-            ppList++;
-        }
-    }
-
-    return ppEntry;
-}
-
-// Set the speed of a motor via PWM, limiting it to a valid range.
-// Note: A_TB6612FNG_LOCK()/A_TB6612FNG_LOCK() should be called
-// before this is called.
-static int32_t setAndLimitSpeed(aMotor_t *pMotor, int32_t percent)
-{
-    esp_err_t espErr = ESP_ERR_INVALID_ARG;
-    int32_t speedPercentOrEspErr = percent;
-    aMotor_t **ppChannel = NULL;
-        size_t targetDuty = 0;
-    ledc_channel_t pwmChannel;
-
-    if (speedPercentOrEspErr < 0) {
-        speedPercentOrEspErr = 0;
-    } else if (speedPercentOrEspErr > 100) {
-        speedPercentOrEspErr = 100;
-    }
-
-    // Find the channel used by this motor
-    ppChannel = ppFindEntry(pMotor, gpPwmChannelList,
-                            A_UTIL_ARRAY_COUNT(gpPwmChannelList));
-    if (ppChannel != NULL) {
-        pwmChannel = ppChannel - gpPwmChannelList;
-        // Need to wait on the transition semaphore as we can't
-        // change speed if a transition is already in progress;
-        // the semaphore is given by the callback at the end
-        // of a fade
-        xSemaphoreTake(gSemaphoreSpeedTransition[pwmChannel],
-                       (TickType_t) portMAX_DELAY);
-        // Fade to the target duty cycle
-        targetDuty = percentToDuty(speedPercentOrEspErr);
-        espErr = ledc_set_fade_time_and_start(A_MOTOR_PWM_SPEED_MODE,
-                                              pwmChannel,
-                                              targetDuty,
-                                              pMotor->speedTransitionTimeMs,
-                                              LEDC_FADE_NO_WAIT);
-    }
-
-    if (espErr != ESP_OK) {
-        printf(A_LOG_TAG "unable to set motor \"%s\" speed to %d%%"
-              " (duty cycle %d), transition time %d ms (0x%02x)!.\n",
-              pMotor->pNameStr, (int) speedPercentOrEspErr, targetDuty,
-              pMotor->speedTransitionTimeMs,
-              (int) espErr);
-        speedPercentOrEspErr = (int32_t) espErr;
-    } else {
-        pMotor->speedPercent = (size_t) speedPercentOrEspErr;
-        printf(A_LOG_TAG "motor \"%s\" speed set to %d%%.\n", pMotor->pNameStr,
-               pMotor->speedPercent);
-    }
-
-    return  speedPercentOrEspErr;
-}
-
 // Close a motor, freeing memory, removing it from the linked list.
-// Note: A_TB6612FNG_LOCK()/A_TB6612FNG_LOCK() should be called
+// Note: A_TB6612FNG_LOCK()/A_TB6612FNG_UNLOCK() should be called
 // before this is called.
 static void motorClose(aMotor_t *pMotor)
 {
     const char *pNameStr;
-    aMotor_t **ppTimerOrChannel;
-    size_t pwmChannel;
-    ledc_timer_config_t pwmTimerConfig = {.speed_mode = LEDC_LOW_SPEED_MODE,
-                                          .timer_num = -1, // timer_num is set below
-                                          .clk_cfg = LEDC_AUTO_CLK,
-                                          .deconfigure = true};
 
     if (pMotor != NULL) {
         pNameStr = pMotor->pNameStr;
-        // Stop the motor
-        setAndLimitSpeed(pMotor, 0);
+        if (pMotor->pPwm != NULL) {
+            // Close the PWM
+            aPwmClose(pMotor->pPwm);
+        }
         // Set the pins low (for off)
         gpio_set_level(pMotor->pinMotorControl1, 0);
         gpio_set_level(pMotor->pinMotorControl2, 0);
-        // Free PWM channel and transition semaphore
-        ppTimerOrChannel = ppFindEntry(pMotor, gpPwmChannelList,
-                                       A_UTIL_ARRAY_COUNT(gpPwmChannelList));
-        if (ppTimerOrChannel != NULL) {
-            pwmChannel = ppTimerOrChannel - gpPwmChannelList;
-            if (gSemaphoreSpeedTransition[pwmChannel] != NULL) {
-                // Wait for any speed transition to complete
-                xSemaphoreTake(gSemaphoreSpeedTransition[pwmChannel],
-                               (TickType_t) portMAX_DELAY);
-                // Give the semaphore again so that we can delete it
-                xSemaphoreGive(gSemaphoreSpeedTransition[pwmChannel]);
-                vSemaphoreDelete(gSemaphoreSpeedTransition[pwmChannel]);
-                gSemaphoreSpeedTransition[pwmChannel] = NULL;
-            }
-            *ppTimerOrChannel = NULL;
-        }
-        // Deconfigure and free PWM timer
-        ppTimerOrChannel = ppFindEntry(pMotor, gpPwmTimerList,
-                                       A_UTIL_ARRAY_COUNT(gpPwmTimerList));
-        if (ppTimerOrChannel != NULL) {
-            pwmTimerConfig.timer_num = ppTimerOrChannel - gpPwmTimerList;
-            ledc_timer_pause(pwmTimerConfig.speed_mode,
-                             pwmTimerConfig.timer_num);
-            ledc_timer_config(&pwmTimerConfig);
-            *ppTimerOrChannel = NULL;
-        }
         // Remove from the linked list and free memory
         aUtilLinkedListRemove(&gpMotorList, pMotor);
         free(pMotor);
@@ -307,15 +156,6 @@ static void motorClose(aMotor_t *pMotor)
         printf(A_LOG_TAG "motor \"%s\" closed.\n", pNameStr);
     }
 }
-
-/* ----------------------------------------------------------------
- * MORE VARIABLES
- * -------------------------------------------------------------- */
-
-// Callback to track the end of PWM transitions.
-static ledc_cbs_t gPwmCallbacks = {
-        .fade_cb = pwmTransitionEnd
-    };
 
 /* ----------------------------------------------------------------
  * PUBLIC FUNCTIONS
@@ -336,8 +176,7 @@ esp_err_t aMotorInit(gpio_num_t pinEnable)
             if (gMutex != NULL) {
                 // Store the enable pin for use later
                 gPinEnable = pinEnable;
-                // Install PWM
-                espErr = ledc_fade_func_install(0);
+                espErr = ESP_OK;
             }
         }
     }
@@ -364,22 +203,8 @@ aMotor_t *pAMotorOpen(gpio_num_t pinPwm,
                       const char *pNameStr)
 {
     esp_err_t espErr;
+    aPwm_t *pPwm = NULL;
     aMotor_t *pMotor = NULL;
-    ledc_timer_config_t pwmTimerConfig = {.duty_resolution = A_MOTOR_PWM_RESOLUTION_BITS,
-                                          .freq_hz = A_MOTOR_PWM_FREQUENCY_HERTZ,
-                                          .speed_mode = A_MOTOR_PWM_SPEED_MODE,
-                                          .timer_num = -1, // timer_num is set below
-                                          .clk_cfg = LEDC_AUTO_CLK,
-                                          .deconfigure = false};
-    ledc_channel_config_t pwmChannelConfig = {.channel = -1, // Channel is set below
-                                              .duty = 0,
-                                              .gpio_num = pinPwm,
-                                              .speed_mode = A_MOTOR_PWM_SPEED_MODE,
-                                              .hpoint = 0,
-                                              .timer_sel = -1, // timer_sel is set below
-                                              .flags.output_invert = 0};
-    aMotor_t **ppTimer = NULL;
-    aMotor_t **ppChannel = NULL;
 
     A_TB6612FNG_LOCK(espErr);
 
@@ -394,56 +219,21 @@ aMotor_t *pAMotorOpen(gpio_num_t pinPwm,
         pMotor = (aMotor_t *) malloc(sizeof(*pMotor));
         if (pMotor != NULL) {
             memset(pMotor, 0, sizeof(*pMotor));
-            // Set up PWM: find a spare timer
-            ppTimer = ppFindEntry(NULL, gpPwmTimerList,
-                                  A_UTIL_ARRAY_COUNT(gpPwmTimerList));
-            if (ppTimer != NULL) {
-                // Found one: allocate it to this motor and configure the PWM timer
-                *ppTimer = pMotor;
-                pwmTimerConfig.timer_num = ppTimer - gpPwmTimerList;
-                espErr = ledc_timer_config(&pwmTimerConfig);
-            }
-            if (espErr == ESP_OK) {
-                // Set up PWM: find a spare channel
-                espErr = ESP_ERR_NO_MEM;
-                ppChannel = ppFindEntry(NULL, gpPwmChannelList,
-                                        A_UTIL_ARRAY_COUNT(gpPwmChannelList));
-                if (ppChannel != NULL) {
-                    // Found one: allocate it to this motor and configure the PWM
-                    *ppChannel = pMotor;
-                    pwmChannelConfig.channel = ppChannel - gpPwmChannelList;
-                    pwmChannelConfig.timer_sel = pwmTimerConfig.timer_num;
-                    espErr = ledc_channel_config(&pwmChannelConfig);
-                    if (espErr == ESP_OK) {
-                        espErr = ESP_ERR_NO_MEM;
-                        // Create a semaphore which we will use to track whether
-                        // a speed transition is active or not (otherwise we
-                        // can't change speed reliably as a fade command is
-                        // ignored if one is already in progress)
-                        // Just the one value available in a counting semaphore,
-                        // with that value available initially.
-                        gSemaphoreSpeedTransition[pwmChannelConfig.channel] = xSemaphoreCreateCounting(1, 1);
-                        if (gSemaphoreSpeedTransition[pwmChannelConfig.channel] != NULL) {
-                            // Register a callback and pass it a pointer to the
-                            // mutex so that it can be given by the callback
-                            espErr = ledc_cb_register(pwmChannelConfig.speed_mode,
-                                                      pwmChannelConfig.channel,
-                                                      &gPwmCallbacks,
-                                                      (void *) &(gSemaphoreSpeedTransition[pwmChannelConfig.channel]));
-                        }
-                        if (espErr == ESP_OK) {
-                            // And finally, the pins to set direction or it won't go
-                            espErr = setDirectionPinsClockwise(true,
-                                                               pinMotorControl1,
-                                                               pinMotorControl2);
-                        }
-                    }
-                }
+            // Open a PWM
+            pPwm = pAPwmOpen(pinPwm, pNameStr);
+            if (pPwm != NULL) {
+                // Set the direction or it won't go
+                espErr = setDirectionPinsClockwise(true,
+                                                    pinMotorControl1,
+                                                    pinMotorControl2);
+            } else {
+                espErr = aPwmOpenLastErrorGetReset();
             }
             if (espErr == ESP_OK) {
                 // Populate the rest and add the motor
                 // to the linked list
                 espErr = ESP_ERR_NO_MEM;
+                pMotor->pPwm = pPwm;
                 pMotor->pinMotorControl1 = pinMotorControl1;
                 pMotor->pinMotorControl2 = pinMotorControl2;
                 pMotor->pNameStr = pNameStr;
@@ -462,18 +252,8 @@ aMotor_t *pAMotorOpen(gpio_num_t pinPwm,
 
     if (espErr < 0) {
         // Clean up on error
-        if (ppTimer != NULL) {
-            pwmTimerConfig.deconfigure = true;
-            ledc_timer_config(&pwmTimerConfig);
-            *ppTimer = NULL;
-        }
-        if (ppChannel != NULL) {
-            *ppChannel = NULL;
-        }
-        if ((pwmChannelConfig.channel >= 0) &&
-            (gSemaphoreSpeedTransition[pwmChannelConfig.channel] != NULL)) {
-            vSemaphoreDelete(gSemaphoreSpeedTransition[pwmChannelConfig.channel]);
-            gSemaphoreSpeedTransition[pwmChannelConfig.channel] = NULL;
+        if (pPwm != NULL) {
+            aPwmClose(pPwm);
         }
         free(pMotor);
         gMotorOpenLastErrorCode = espErr;
@@ -561,8 +341,7 @@ int32_t aMotorSpeedRelativeSet(aMotor_t *pMotor, int32_t percent)
 
     speedPercentOrEspErr = ESP_ERR_INVALID_ARG;
     if (pMotor != NULL) {
-        percent += (int32_t) pMotor->speedPercent;
-        speedPercentOrEspErr = setAndLimitSpeed(pMotor, percent);
+        speedPercentOrEspErr = aPwmRateRelativeSet(pMotor->pPwm, percent);
     }
 
     A_TB6612FNG_UNLOCK();
@@ -579,7 +358,7 @@ int32_t aMotorSpeedAbsoluteSet(aMotor_t *pMotor, size_t percent)
 
     speedPercentOrEspErr = (int32_t) ESP_ERR_INVALID_ARG;
     if (pMotor != NULL) {
-        speedPercentOrEspErr = setAndLimitSpeed(pMotor, percent);
+        speedPercentOrEspErr = aPwmRateAbsoluteSet(pMotor->pPwm, percent);
     }
 
     A_TB6612FNG_UNLOCK();
@@ -596,7 +375,7 @@ int32_t aMotorSpeedGet(aMotor_t *pMotor)
 
     speedPercentOrEspErr = (int32_t) ESP_ERR_INVALID_ARG;
     if (pMotor != NULL) {
-        speedPercentOrEspErr = (int32_t) pMotor->speedPercent;
+        speedPercentOrEspErr = (int32_t) aPwmRateGet(pMotor->pPwm);
     }
 
     A_TB6612FNG_UNLOCK();
@@ -613,10 +392,7 @@ int32_t aMotorSpeedTransitionTimeSet(aMotor_t *pMotor, size_t timeMs)
 
     timeMsOrEspErr = (int32_t) ESP_ERR_INVALID_ARG;
     if (pMotor != NULL) {
-        pMotor->speedTransitionTimeMs = timeMs;
-        timeMsOrEspErr = (int32_t) pMotor->speedTransitionTimeMs;
-        printf(A_LOG_TAG "motor \"%s\" transition time set to %d ms.\n",
-               pMotor->pNameStr, (int) timeMsOrEspErr);
+        timeMsOrEspErr = aPwmRateTransitionTimeSet(pMotor->pPwm, timeMs);
     }
 
     A_TB6612FNG_UNLOCK();
@@ -633,7 +409,7 @@ int32_t aMotorSpeedTransitionTimeGet(aMotor_t *pMotor)
 
     timeMsOrEspErr = (int32_t) ESP_ERR_INVALID_ARG;
     if (pMotor != NULL) {
-        timeMsOrEspErr = (int32_t) pMotor->speedTransitionTimeMs;
+        timeMsOrEspErr = aPwmRateTransitionTimeGet(pMotor->pPwm);
     }
 
     A_TB6612FNG_UNLOCK();
@@ -667,8 +443,6 @@ void aMotorDeinit()
     A_TB6612FNG_UNLOCK();
 
     if (gMutex != NULL) {
-        // Uninstall PWM
-        ledc_fade_func_uninstall();
         // Destroy the mutex
         vSemaphoreDelete(gMutex);
         gMutex = NULL;
