@@ -184,9 +184,9 @@ void app_main(void)
                         if (pMotorDriving != NULL) {
                             // Open the steering motor
                             pMotorSteering = pAMotorOpen(A_PIN_MOTOR_STEERING_PWM,
-                                                        A_PIN_MOTOR_STEERING_CONTROL_1,
-                                                        A_PIN_MOTOR_STEERING_CONTROL_2,
-                                                        "steering");
+                                                         A_PIN_MOTOR_STEERING_CONTROL_1,
+                                                         A_PIN_MOTOR_STEERING_CONTROL_2,
+                                                         "steering");
                             if (pMotorSteering != NULL) {
                                 // Configure the driving motor to transit between speeds gently
                                 aMotorSpeedTransitionTimeSet(pMotorDriving, 10);
@@ -217,7 +217,14 @@ void app_main(void)
                                             readingsPerSecond = (gCallbackReadCount / durationSeconds) >> 1;
                                         }
                                         speedPercent = aMotorSpeedRelativeSet(pMotorDriving, speedChangePercent);
-                                        if ((speedPercent == 0) || (speedPercent == 100)) {
+                                        if (speedPercent == 0) {
+                                            if (aMotorDirectionIsClockwise(pMotorDriving)) {
+                                                aMotorDirectionAnticlockwiseSet(pMotorDriving);
+                                            } else {
+                                                aMotorDirectionClockwiseSet(pMotorDriving);
+                                            }
+                                            speedChangePercent = -speedChangePercent;
+                                        } else if (speedPercent == 100) {
                                             speedChangePercent = -speedChangePercent;
                                         }
                                     }

@@ -21,7 +21,9 @@
  * @brief Definition of the motor API, used to drive a motor. This
  * API is thread-safe with the exception of aMotorInit() and
  * aMotorDeinit(), which must not be called at the same time as
- * any other of these API calls.
+ * any other of these API calls.  This API requires the PWM API
+ * to have been initialised, by calling aPwmInit(), before it will
+ * do anything useful.
  */
 
 #ifdef __cplusplus
@@ -59,9 +61,6 @@ typedef struct {
  * function will do nothing and return ESP_OK.  Call aMotorDeinit()
  * to deinitialise the API and free resources.
  *
- * Note: the application must call aPwmInit() to ensure that PWM is
- * available before aMotorInit() is called.
- *
  * @param pinEnable  an MCU pin which, when pulled high, enables
  *                   drive to the motors; use -1 if there is no
  *                   such pin.
@@ -73,6 +72,10 @@ esp_err_t aMotorInit(gpio_num_t pinEnable);
  * before this function will return successfully.  Use aMotorClose()
  * to close a motor once more.  A motor will be opened with zero
  * speed, clockwise direction and zero speed transition time.
+ *
+ * Note: the application must have called aPwmInit() at least once
+ * to ensure that PWM is available before pAMotorOpen() is called
+ * for the first time, otherwise pAMotorOpen() will fail.
  *
  * @param pinPwm            the MCU pin connected to the PWM input
  *                          of the motor driver,
@@ -137,11 +140,11 @@ esp_err_t aMotorDirectionAnticlockwiseSet(aMotor_t *pMotor);
  *
  * @param[in] pMotor the motor to get the direction of;
  *                   cannot be NULL.
- * @return           on success a positive value, 0 for
- *                   clockwise, 1 for anti-clockwise,
+ * @return           on success a positive value, 1 for
+ *                   clockwise, 0 for anti-clockwise,
  *                   else a negatve value from esp_err_t.
  */
-int32_t aMotorDirectionGet(aMotor_t *pMotor);
+int32_t aMotorDirectionIsClockwise(aMotor_t *pMotor);
 
 /** Set the speed of a motor relative to its current
  * speed by the given percentage of the maximum speed.

@@ -191,7 +191,7 @@ esp_err_t aMotorInit(gpio_num_t pinEnable)
         }
         gPinEnable = -1;
         printf(A_LOG_TAG "unable to initialise motor driver"
-                " (0x%02x)!\n", espErr);
+               " (0x%02x)!\n", espErr);
     }
 
     return espErr;
@@ -199,7 +199,8 @@ esp_err_t aMotorInit(gpio_num_t pinEnable)
 
 // Open a motor.
 aMotor_t *pAMotorOpen(gpio_num_t pinPwm,
-                      gpio_num_t pinMotorControl1, gpio_num_t pinMotorControl2,
+                      gpio_num_t pinMotorControl1,
+                      gpio_num_t pinMotorControl2,
                       const char *pNameStr)
 {
     esp_err_t espErr;
@@ -224,8 +225,8 @@ aMotor_t *pAMotorOpen(gpio_num_t pinPwm,
             if (pPwm != NULL) {
                 // Set the direction or it won't go
                 espErr = setDirectionPinsClockwise(true,
-                                                    pinMotorControl1,
-                                                    pinMotorControl2);
+                                                   pinMotorControl1,
+                                                   pinMotorControl2);
             } else {
                 espErr = aPwmOpenLastErrorGetReset();
             }
@@ -252,15 +253,13 @@ aMotor_t *pAMotorOpen(gpio_num_t pinPwm,
 
     if (espErr < 0) {
         // Clean up on error
-        if (pPwm != NULL) {
-            aPwmClose(pPwm);
-        }
+        aPwmClose(pPwm);
         free(pMotor);
         gMotorOpenLastErrorCode = espErr;
         printf(A_LOG_TAG "unable to open motor \"%s\","
-                " PWM pin %d, control pins %d and %d (0x%02x)!\n",
-                pNameStr, pinPwm, pinMotorControl1,
-                pinMotorControl2, espErr);
+               " PWM pin %d, control pins %d and %d (0x%02x)!\n",
+               pNameStr, pinPwm, pinMotorControl1,
+               pinMotorControl2, espErr);
     } else {
         if (gPinEnable >= 0) {
             // Make sure the enable pin is set high; don't check
@@ -269,10 +268,10 @@ aMotor_t *pAMotorOpen(gpio_num_t pinPwm,
             aUtilPinOutputSet(gPinEnable, 1);
         }
         printf(A_LOG_TAG "motor \"%s\" opened,"
-                " PWM pin %d, control pins %d and %d.\n",
-                pMotor->pNameStr, pinPwm,
-                pMotor->pinMotorControl1,
-                pMotor->pinMotorControl2);
+               " PWM pin %d, control pins %d and %d.\n",
+               pMotor->pNameStr, pinPwm,
+               pMotor->pinMotorControl1,
+               pMotor->pinMotorControl2);
     }
 
     return pMotor;
@@ -316,7 +315,7 @@ esp_err_t aMotorDirectionAnticlockwiseSet(aMotor_t *pMotor)
 }
 
 // Get the direction of a motor's rotation.
-int32_t aMotorDirectionGet(aMotor_t *pMotor)
+int32_t aMotorDirectionIsClockwise(aMotor_t *pMotor)
 {
     int32_t directionOrEspErr;
 

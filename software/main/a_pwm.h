@@ -20,7 +20,7 @@
 /** @file
  * @brief Definition of the PWM API, used by the motor API
  * and also for driving LEDs. This API is thread-safe with the
- * exception of aMotorInit() and aMotorDeinit(), which must not be
+ * exception of aPwnInit() and aPwmDeinit(), which must not be
  * called at the same time as any other of these API calls.
  */
 
