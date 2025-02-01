@@ -11,7 +11,7 @@ All of this is then output again to a `.stl` file for printing at 0.05&nbsp;mm r
   - shaft&nbsp;3 wheel: 50&nbsp;teeth, 4&nbsp;mm shaft, 2&nbsp;mm thick,
   - shaft 1, 2 and 3&nbsp;pinion: 10&nbsp;teeth, 1.6&nbsp;mm shaft, 4&nbsp;mm thick,
 - the non-circular rack gear was peculiar: the height stub setting in [Gearotic](https://www.gearotic.com/) did nothing, `ArtF` created a [special version of gearotic](https://gearotic.com/GearHeads/viewtopic.php?p=16683#p16683) that included an extra "shift" parameter which adjusted the tooth height but then I realised that the rack still wasn't meshing with the other gears properly when I ran it in simulation, it only did that if I set modulus to 0.5 instead of 0.4, which I think was the problem all along, the "shift" parameter could be left at 0.  So:
-  - rack: modulus&nbsp;0.5, 20&nbsp;teeth, 3&nbsp;mm thick.
+  - rack: modulus&nbsp;0.5, 14&nbsp;teeth, 2.8&nbsp;mm thick.
 - `gearotic_steer.mp4`: a video capture of the steering gear train running in Gearotic.
 - `gearotic_steer_*.stl`: the STL output files from `gear_steer.gth`.
 - `gear_steer.blend`: the `gearotic_steer_*.stl` files imported into Blender plus a base which forms the chassis of `auto` in which the gears can be mounted with the aid of some 1.5&nbsp;mm inner diameter, 4&nbsp;mm outer diameter, 1.2&nbsp;mm high bearings (from [Bearing Boys](https://www.bearingboys.co.uk/Miniature-Bearings/W681X-Budget-Open-Stainless-Steel-Miniature-Ball-Bearing-15mm-x-4mm-x-12mm-62859-p)), 1.5&nbsp;mm diameter brass rod (from [eBay](https://www.ebay.co.uk/itm/134173633161)) cut into 3 x 14&nbsp;mm and 1 x 6&nbsp;mm lengths, an M2 tap and four M2 bolts.  Specific mods to the imported gears:

@@ -1,4 +1,4 @@
-These are the 3D-printable files for the automated vehicle.  `mini.blend` and the exports `wheel_front.stl`, `wheel_rear.stl`, `tyre.stl` and `hub_cap.stl` are based on the marvellous [original mini by Patrickart](https://www.thingiverse.com/thing:5119871), which can be found on Thingiverse; `chassis.blend` and its export `chassis.stl` are my own.
+These are the 3D-printable files for `auto`.  `mini.blend` and the exports `wheel_front.stl`, `wheel_rear.stl`, `tyre.stl` and `hub_cap.stl` are based on the marvellous [original mini by Patrickart](https://www.thingiverse.com/thing:5119871), which can be found on Thingiverse; `chassis.blend` and its export `chassis.stl` are my own.
 
 - `mini.zip` is a zipped version of `mini.blend` (otherwise it is too big for Github) which is a Blender-import of [original mini by Patrickart](https://www.thingiverse.com/thing:5119871) scaled to full/actual size.
 - `mini.blend` modifies the [original mini by Patrickart](https://www.thingiverse.com/thing:5119871) to provide a separate body shell, front and rear wheels, tyre and hub-cap.
