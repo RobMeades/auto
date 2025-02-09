@@ -154,115 +154,103 @@ void app_main(void)
     i2c_master_bus_handle_t busHandle;
     aMotor_t *pMotorDriving = NULL;
     aMotor_t *pMotorSteering = NULL;
-    int32_t speedPercent;
-    int32_t speedChangePercent = -A_SPEED_CHANGE_PERCENT;
-    int64_t startTimeMs;
-    int64_t durationSeconds;
-    size_t readingsPerSecond = 0;
 
     // Open the I2C bus
     espErr = i2c_new_master_bus(&gI2cMasterBusConfig, &busHandle);
     if (espErr == ESP_OK) {
         // Initialise the hall effect stuff
-        espErr = aSensorHallEffectInit(busHandle, A_PIN_SENSOR_HALL_EFFECT_DISABLE_LEFT,
+        espErr = aSensorHallEffectInit(busHandle,
+                                       A_PIN_SENSOR_HALL_EFFECT_DISABLE_LEFT,
                                        A_PIN_SENSOR_HALL_EFFECT_DISABLE_RIGHT);
         if (espErr == ESP_OK) {
             // Initialse PWM
             espErr = aPwmInit();
-            if (espErr == ESP_OK) {
-                // Initialise the motor driver
-                espErr = aMotorInit(A_PIN_MOTOR_ENABLE);
-                if (espErr == ESP_OK) {
-                    // Open the hall effect stuff
-                    espErr = aSensorHallEffectOpen(busHandle);
-                    if (espErr == ESP_OK) {
-                        // Open the driving motor
-                        pMotorDriving = pAMotorOpen(A_PIN_MOTOR_DRIVING_PWM,
-                                                    A_PIN_MOTOR_DRIVING_CONTROL_1,
-                                                    A_PIN_MOTOR_DRIVING_CONTROL_2,
-                                                    "driving");
-                        if (pMotorDriving != NULL) {
-                            // Open the steering motor
-                            pMotorSteering = pAMotorOpen(A_PIN_MOTOR_STEERING_PWM,
-                                                         A_PIN_MOTOR_STEERING_CONTROL_1,
-                                                         A_PIN_MOTOR_STEERING_CONTROL_2,
-                                                         "steering");
-                            if (pMotorSteering != NULL) {
-                                // Configure the driving motor to transit between speeds gently
-                                aMotorSpeedTransitionTimeSet(pMotorDriving, 10);
-                                // Full speed ahead!
-                                aMotorSpeedAbsoluteSet(pMotorDriving, 100);
-                                // Start the hall effect stuff reading
-                                espErr = aSensorHallEffectReadStart(callbackRead, NULL,
-                                                                    A_PIN_SENSOR_HALL_EFFECT_INT_LEFT,
-                                                                    A_PIN_SENSOR_HALL_EFFECT_INT_RIGHT);
-                                if (espErr == ESP_OK) {
-                                    printf("Reading (in micro-Teslas); if this is the ESP-IDF monitor program, press CTRL ] to terminate:\n");
-                                    startTimeMs = aUtilTimeSinceBootMs();
-                                    while (aUtilTimeSinceBootMs() < startTimeMs + 10000) {
-                                        // Print the readings out; gCallbackReadCount / 2 as two callbacks
-                                        // are required, one from the left-hand hall effect sensor and
-                                        // one from the right-hand hall effect sensor, for a single reading
-                                        // The extra characters on the end below make the line long enough that
-                                        // it gets flushed immediately; without that the output is jerky
-                                        printf("%10d (%4d/second) reading:       %6d     <--> %6d                \n",
-                                            gCallbackReadCount >> 1, readingsPerSecond,
-                                            (int) gBuffers[A_SENSOR_HALL_EFFECT_DIRECTION_LEFT].average,
-                                            (int) gBuffers[A_SENSOR_HALL_EFFECT_DIRECTION_RIGHT].average);
-                                        // Don't crowd the output, let the idle task in
-                                        aUtilDelayMs(100);
-                                        durationSeconds = (aUtilTimeSinceBootMs() - startTimeMs) / 1000;
-                                        if (durationSeconds > 0) {
-                                            // Divide by two for the same reason as above
-                                            readingsPerSecond = (gCallbackReadCount / durationSeconds) >> 1;
-                                        }
-                                        speedPercent = aMotorSpeedRelativeSet(pMotorDriving, speedChangePercent);
-                                        if (speedPercent == 0) {
-                                            if (aMotorDirectionIsClockwise(pMotorDriving)) {
-                                                aMotorDirectionAnticlockwiseSet(pMotorDriving);
-                                            } else {
-                                                aMotorDirectionClockwiseSet(pMotorDriving);
-                                            }
-                                            speedChangePercent = -speedChangePercent;
-                                        } else if (speedPercent == 100) {
-                                            speedChangePercent = -speedChangePercent;
-                                        }
-                                    }
-                                } else {
-                                    printf("Unable to start read of hall effect sensors (0x%02x)!\n", espErr);
-                                }
-                                aSensorHallEffectClose();
-                                aMotorClose(pMotorSteering);
-                            } else {
-                                espErr = aMotorOpenLastErrorGetReset();
-                                printf("Unable to open the steering motor 0x%02x)!\n", espErr);
-                            }
-                            aMotorClose(pMotorDriving);
-                        } else {
-                            espErr = aMotorOpenLastErrorGetReset();
-                            printf("Unable to open the driving motor 0x%02x)!\n", espErr);
-                        }
-                    } else {
-                        printf("Unable to open hall effect sensors (0x%02x)!\n", espErr);
-                    }
-                    aSensorHallEffectDeinit();
-                    aMotorDeinit();
-                } else {
-                    printf("Unable to initialise motors 0x%02x)!\n", espErr);
-                }
-                aPwmDeinit();
-            } else {
-                printf("Unable to initialise PWM 0x%02x)!\n", espErr);
-            }
-        } else {
-            printf("Unable to initialise hall effect sensors (0x%02x)!\n", espErr);
         }
+        if (espErr == ESP_OK) {
+            // Initialise the motor driver
+            espErr = aMotorInit(A_PIN_MOTOR_ENABLE);
+        }
+        if (espErr == ESP_OK) {
+            // Open the hall effect stuff
+            espErr = aSensorHallEffectOpen(busHandle);
+        }
+        if (espErr == ESP_OK) {
+            // Open the driving motor
+            pMotorDriving = pAMotorOpen(A_PIN_MOTOR_DRIVING_PWM,
+                                        A_PIN_MOTOR_DRIVING_CONTROL_1,
+                                        A_PIN_MOTOR_DRIVING_CONTROL_2,
+                                        "driving");
+        }
+        if (pMotorDriving != NULL) {
+            // Open the steering motor
+            pMotorSteering = pAMotorOpen(A_PIN_MOTOR_STEERING_PWM,
+                                         A_PIN_MOTOR_STEERING_CONTROL_1,
+                                         A_PIN_MOTOR_STEERING_CONTROL_2,
+                                         "steering");
+        } else {
+            espErr = aMotorOpenLastErrorGetReset();
+        }
+        if (pMotorSteering != NULL) {
+            // Configure the driving motor to transit between speeds gently
+            aMotorSpeedTransitionTimeSet(pMotorDriving, 10);
+            // Full speed ahead!
+            aMotorSpeedAbsoluteSet(pMotorDriving, 100);
+            // Start the hall effect stuff reading
+            espErr = aSensorHallEffectReadStart(callbackRead, NULL,
+                                                A_PIN_SENSOR_HALL_EFFECT_INT_LEFT,
+                                                A_PIN_SENSOR_HALL_EFFECT_INT_RIGHT);
+        } else {
+            espErr = aMotorOpenLastErrorGetReset();
+        }
+        if (espErr == ESP_OK) {
+            printf("Reading (in micro-Teslas); if this is the ESP-IDF monitor"
+                   " program, press CTRL ] to terminate:\n");
+            int64_t startTimeMs = aUtilTimeSinceBootMs();
+#if OUTPUT_CSV
+            printf("\"Time (ms)\", \"Left (uTesla)\", \"Right (uTesla)\"\n");
+#else
+            size_t readingsPerSecond = 0;
+#endif
+            while (1) {
+                // Print the readings out; gCallbackReadCount / 2 as two callbacks
+                // are required, one from the left-hand hall effect sensor and
+                // one from the right-hand hall effect sensor, for a single reading
+#if OUTPUT_CSV
+                // Print the output in comma-separated variable form so that
+                // it can be imported into Excel
+                printf("%lld, %d, %d\n", aUtilTimeSinceBootMs() - startTimeMs,
+                       (int) gBuffers[A_SENSOR_HALL_EFFECT_DIRECTION_LEFT].average,
+                       (int) gBuffers[A_SENSOR_HALL_EFFECT_DIRECTION_RIGHT].average);
+#else
+                // The extra characters on the end below make the line long enough that
+                // it gets flushed immediately; without that the output is jerky
+                printf("%10d (%4d/second) reading:       %6d     <--> %6d                \n",
+                      gCallbackReadCount >> 1, readingsPerSecond,
+                      (int) gBuffers[A_SENSOR_HALL_EFFECT_DIRECTION_LEFT].average,
+                      (int) gBuffers[A_SENSOR_HALL_EFFECT_DIRECTION_RIGHT].average);
+                int64_t durationSeconds = (aUtilTimeSinceBootMs() - startTimeMs) / 1000;
+                if (durationSeconds > 0) {
+                    // Divide by two for the same reason as above
+                    readingsPerSecond = (gCallbackReadCount / durationSeconds) >> 1;
+                }
+#endif
+                // Don't crowd the output, let the idle task in
+                aUtilDelayMs(100);
+            }
+        }
+        aSensorHallEffectClose();
+        aMotorClose(pMotorDriving);
+        aMotorClose(pMotorSteering);
+        aSensorHallEffectDeinit();
+        aMotorDeinit();
         i2c_del_master_bus(busHandle);
-    } else {
-        printf("Unable to open I2C bus (0x%02x)!\n", espErr);
     }
 
-    printf("Finished.\n");
+    if (espErr == ESP_OK) {
+        printf("Finished.\n");
+    } else {
+        printf("Unable to start, ESP error 0x%02x.\n", espErr);
+    }
     printf("If this is the ESP-IDF monitor program, press CTRL ] to terminate it.\n");
 }
 
