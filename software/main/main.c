@@ -34,12 +34,12 @@
 
 // MCU pins.
 #define A_PIN_MOTOR_ENABLE                     13
-#define A_PIN_MOTOR_DRIVING_PWM                 1
-#define A_PIN_MOTOR_DRIVING_CONTROL_1           2
-#define A_PIN_MOTOR_DRIVING_CONTROL_2           3
-#define A_PIN_MOTOR_STEERING_PWM                4
-#define A_PIN_MOTOR_STEERING_CONTROL_1          5
-#define A_PIN_MOTOR_STEERING_CONTROL_2          6
+#define A_PIN_MOTOR_STEERING_PWM                1
+#define A_PIN_MOTOR_STEERING_CONTROL_1          2
+#define A_PIN_MOTOR_STEERING_CONTROL_2          3
+#define A_PIN_MOTOR_DRIVING_PWM                 4
+#define A_PIN_MOTOR_DRIVING_CONTROL_1           5
+#define A_PIN_MOTOR_DRIVING_CONTROL_2           6
 
 #define A_PIN_I2C_SCL                           7
 #define A_PIN_I2C_SDA                           8
@@ -57,12 +57,41 @@
 // The size of averaging buffer to use.
 #define A_AVERAGING_BUFFER_LENGTH 32
 
-// The amount to change the driving speed by at each loop.
-#define A_SPEED_CHANGE_PERCENT 11
+// The transition time for a speed change.
+#define A_MOTOR_DRIVING_TRANSITION_TIME_MS 100
+
+// Which direction of the driving motor amounts to forward.
+#define A_MOTOR_DRIVING_FORWARD_IS_CLOCKWISE false
+
+// The percentage amount by which to change the speed,
+// on increment or decrement, of a driving motor.
+#define A_MOTOR_DRIVING_CHANGE_PERCENT 10
+
+// Which direction of the steering motor amounts to clockwise.
+#define A_MOTOR_STEERING_LEFT_IS_CLOCKWISE false
+
+// The speed at which to run the steering motor during
+// a steering pulse, as a percentage.
+#define A_MOTOR_STEERING_PULSE_SPEED_PERCENT 100
+
+// The duration of a single pulse of the steering motor,
+// in milliseconds.
+#define A_MOTOR_STEERING_PULSE_DURATION_MS 1000
 
 /* ----------------------------------------------------------------
  * TYPES
  * -------------------------------------------------------------- */
+
+// Commands, received from the user.
+typedef enum {
+    A_COMMAND_NONE,
+    A_COMMAND_EXIT,
+    A_COMMAND_SPEED_INCREASE,
+    A_COMMAND_SPEED_DECREASE,
+    A_COMMAND_SPEED_ZERO,
+    A_COMMAND_STEER_LEFT,
+    A_COMMAND_STEER_RIGHT
+} aCommand_t;
 
 // An averaging buffer.
 typedef struct {
@@ -96,6 +125,129 @@ static aAveragingBuffer_t gBuffers[A_SENSOR_HALL_EFFECT_DIRECTION_NUM] = {0};
 /* ----------------------------------------------------------------
  * STATIC FUNCTIONS
  * -------------------------------------------------------------- */
+
+// Get a command from the user (non-blocking).
+static aCommand_t commandGet()
+{
+    aCommand_t command = A_COMMAND_NONE;
+
+    // Input characters and their meaning; intended to
+    // match the layout of the number pad of a keyboard,
+    // so switch NUM LOCK on for this.
+    int character = fgetc(stdin);
+    if (character != EOF) {
+        printf("COMMAND: ");
+        switch (character) {
+            case 27:  // ESC
+                command = A_COMMAND_EXIT;
+                printf("exit.");
+            break;
+            case '8':
+                command = A_COMMAND_SPEED_INCREASE;
+                printf("speed up.");
+            break;
+            case '2':
+                command = A_COMMAND_SPEED_DECREASE;
+                printf("speed down.");
+            break;
+            case '5':
+                command = A_COMMAND_SPEED_ZERO;
+                printf("stop.");
+            break;
+            case '4':
+                command = A_COMMAND_STEER_LEFT;
+                printf("left a bit.");
+            break;
+            case '6':
+                command = A_COMMAND_STEER_RIGHT;
+                printf("right a bit.");
+            break;
+            default:
+                printf("'%c' (%d, 0x%08x) unh?",
+                       character, character, character);
+            break;
+        }
+        printf("\n");
+    }
+    // Make sure nothing piles up
+    while (fgetc(stdin) != EOF) {}
+
+    return command;
+}
+
+// Increment the steering in the left or right direction, returning
+// a negative error code on failure.
+static esp_err_t commandSteeringPulse(aMotor_t *pMotorSteering,
+                                      bool clockwiseNotAnticlockwise)
+{
+    esp_err_t espErr = ESP_ERR_INVALID_ARG;
+
+    if (pMotorSteering) {
+        if (clockwiseNotAnticlockwise) {
+            espErr = aMotorDirectionClockwiseSet(pMotorSteering);
+        } else {
+            espErr = aMotorDirectionAnticlockwiseSet(pMotorSteering);
+        }
+        if (espErr == ESP_OK) {
+            espErr = aMotorSpeedAbsoluteSet(pMotorSteering,
+                                            A_MOTOR_STEERING_PULSE_SPEED_PERCENT);
+        }
+        if (espErr == A_MOTOR_STEERING_PULSE_SPEED_PERCENT) {
+            aUtilDelayMs(A_MOTOR_STEERING_PULSE_DURATION_MS);
+            espErr = aMotorSpeedAbsoluteSet(pMotorSteering, 0);
+        }
+    }
+
+    return espErr;
+}
+
+// Act on a command from the user, returning a negative
+// error code on failure.
+static esp_err_t commandProcess(aCommand_t command,
+                                aMotor_t *pMotorDriving,
+                                aMotor_t *pMotorSteering)
+{
+    esp_err_t espErr = ESP_ERR_NOT_FOUND;
+
+    switch (command) {
+        case A_COMMAND_NONE:
+            espErr = ESP_OK;
+        break;
+        case A_COMMAND_SPEED_INCREASE:
+            if (pMotorDriving) {
+                espErr = aMotorSpeedRelativeSet(pMotorDriving,
+                                                A_MOTOR_DRIVING_CHANGE_PERCENT);
+            }
+        break;
+        case A_COMMAND_SPEED_DECREASE:
+            if (pMotorDriving) {
+                espErr = aMotorSpeedRelativeSet(pMotorDriving,
+                                                -A_MOTOR_DRIVING_CHANGE_PERCENT);
+            }
+        break;
+        case A_COMMAND_SPEED_ZERO:
+            if (pMotorDriving) {
+                espErr = aMotorSpeedAbsoluteSet(pMotorDriving, 0);
+            }
+        break;
+        case A_COMMAND_STEER_LEFT:
+            espErr = commandSteeringPulse(pMotorSteering,
+                                          A_MOTOR_STEERING_LEFT_IS_CLOCKWISE);
+        break;
+        case A_COMMAND_STEER_RIGHT:
+            espErr = commandSteeringPulse(pMotorSteering,
+                                          !A_MOTOR_STEERING_LEFT_IS_CLOCKWISE);
+        break;
+        case A_COMMAND_EXIT:
+            // Nothing to do here
+        break;
+        default:
+            espErr = ESP_ERR_INVALID_ARG;
+        break;
+    }
+
+    return espErr;
+}
 
 // Add a new reading to the averaging buffer for a given direction.
 static void addToAverage(int32_t fluxTeslaX1e6,
@@ -182,6 +334,10 @@ void app_main(void)
                                         "driving");
         }
         if (pMotorDriving != NULL) {
+#if !A_MOTOR_DRIVING_FORWARD_IS_CLOCKWISE
+            // Set the correct driving motor direction
+            aMotorDirectionAnticlockwiseSet(pMotorDriving);
+#endif
             // Open the steering motor
             pMotorSteering = pAMotorOpen(A_PIN_MOTOR_STEERING_PWM,
                                          A_PIN_MOTOR_STEERING_CONTROL_1,
@@ -192,9 +348,8 @@ void app_main(void)
         }
         if (pMotorSteering != NULL) {
             // Configure the driving motor to transit between speeds gently
-            aMotorSpeedTransitionTimeSet(pMotorDriving, 10);
-            // Full speed ahead!
-            aMotorSpeedAbsoluteSet(pMotorDriving, 100);
+            aMotorSpeedTransitionTimeSet(pMotorDriving,
+                                         A_MOTOR_DRIVING_TRANSITION_TIME_MS);
             // Start the hall effect stuff reading
             espErr = aSensorHallEffectReadStart(callbackRead, NULL,
                                                 A_PIN_SENSOR_HALL_EFFECT_INT_LEFT,
@@ -211,7 +366,12 @@ void app_main(void)
 #else
             size_t readingsPerSecond = 0;
 #endif
-            while (1) {
+            aCommand_t command;
+            while ((command = commandGet()) != A_COMMAND_EXIT) {
+                // Process any user command
+                if (commandProcess(command, pMotorDriving, pMotorSteering) < 0) {
+                    printf("ERROR: command failed.\n");
+                }
                 // Print the readings out; gCallbackReadCount / 2 as two callbacks
                 // are required, one from the left-hand hall effect sensor and
                 // one from the right-hand hall effect sensor, for a single reading

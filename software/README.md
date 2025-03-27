@@ -3,8 +3,15 @@ This code builds under ESP-IDF, which can be installed by following the instruct
 
 https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/get-started/index.html#installation
 
+# Configuration
+If you wish to control the `auto` via the USB port, you need to configure the ESP32 device to support USB input.  This can be done by enabling the following in your `sdkconfig` using `menuconfig`:
+
+`CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG`
+
+You can do this in the ESP-IDF plug-in of Visual Studio Code by running `menuconfig`, searching for `console` and selecting `USB Serial/JTAG Controller` (with no secondary console).
+
 # Usage
-Once you have installed ESP-IDF and cloned this repo, `cd` to this directory and build/flash/monitor it with the single command:
+Once you have installed/configured ESP-IDF and cloned this repo, `cd` to this directory and build/flash/monitor it with the single command:
 
 ```
 idf.py -p <port> flash monitor

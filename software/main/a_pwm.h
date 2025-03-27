@@ -32,6 +32,13 @@ extern "C" {
  * COMPILE-TIME MACROS
  * -------------------------------------------------------------- */
 
+#ifndef A_PWM_RATE_TRANSITION_TIME_MIN_MS
+/** Set a minimum rate transition time, otherwise ESP-IDF can issue
+ * a warning "W (21541) ledc: LEDC FADE TOO FAST".
+ */
+# define A_PWM_RATE_TRANSITION_TIME_MIN_MS 10
+#endif
+
 /* ----------------------------------------------------------------
  * TYPES
  * -------------------------------------------------------------- */

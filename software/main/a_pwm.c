@@ -147,6 +147,7 @@ static int32_t setAndLimitRate(aPwm_t *pPwm, int32_t percent)
 {
     esp_err_t espErr = ESP_ERR_INVALID_ARG;
     int32_t ratePercentOrEspErr = percent;
+    size_t rateTransitionTimeMs;
     aPwm_t **ppChannel = NULL;
     size_t targetDuty = 0;
     ledc_channel_t pwmChannel;
@@ -155,6 +156,11 @@ static int32_t setAndLimitRate(aPwm_t *pPwm, int32_t percent)
         ratePercentOrEspErr = 0;
     } else if (ratePercentOrEspErr > 100) {
         ratePercentOrEspErr = 100;
+    }
+
+    rateTransitionTimeMs = pPwm->rateTransitionTimeMs;
+    if (rateTransitionTimeMs < A_PWM_RATE_TRANSITION_TIME_MIN_MS) {
+        rateTransitionTimeMs = A_PWM_RATE_TRANSITION_TIME_MIN_MS;
     }
 
     // Find the channel used by this PWM
@@ -173,7 +179,7 @@ static int32_t setAndLimitRate(aPwm_t *pPwm, int32_t percent)
         espErr = ledc_set_fade_time_and_start(A_PWM_SPEED_MODE,
                                               pwmChannel,
                                               targetDuty,
-                                              pPwm->rateTransitionTimeMs,
+                                              rateTransitionTimeMs,
                                               LEDC_FADE_NO_WAIT);
     }
 
@@ -181,7 +187,7 @@ static int32_t setAndLimitRate(aPwm_t *pPwm, int32_t percent)
         printf(A_LOG_TAG "unable to set PWM \"%s\" rate to %d%%"
               " (duty cycle %d), transition time %d ms (0x%02x)!.\n",
               pPwm->pNameStr, (int) ratePercentOrEspErr, targetDuty,
-              pPwm->rateTransitionTimeMs,
+              rateTransitionTimeMs,
               (int) espErr);
         ratePercentOrEspErr = (int32_t) espErr;
     } else {
