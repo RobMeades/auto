@@ -79,11 +79,12 @@ typedef void (*aSensorHallEffectCallbackRead_t) (aSensorHallEffectDirection_t di
  * @param pinDisableRight an MCU pin which, when set high, will
  *                        disable/reset the right-hand hall effect
  *                        sensor.
- * @return                ESP_OK on success, else error code.
+ * @return                ESP_OK on success, else negative value from
+ *                        esp_err_t.
  */
-esp_err_t aSensorHallEffectInit(i2c_master_bus_handle_t busHandle,
-                                gpio_num_t pinDisableLeft,
-                                gpio_num_t pinDisableRight);
+int32_t aSensorHallEffectInit(i2c_master_bus_handle_t busHandle,
+                              gpio_num_t pinDisableLeft,
+                              gpio_num_t pinDisableRight);
 
 /** Open the hall effect sensors so that they can be read;
  * aSensorHallEffectInit() must have returned successfully before
@@ -92,9 +93,10 @@ esp_err_t aSensorHallEffectInit(i2c_master_bus_handle_t busHandle,
  *
  * @param busHandle      the handle of an opened I2C bus API on which
  *                       the hall effect sensors can be found.
- * @return               ESP_OK on success, else error code.
+ * @return               ESP_OK on success, else negative value
+ *                       from esp_err_t.
  */
-esp_err_t aSensorHallEffectOpen(i2c_master_bus_handle_t busHandle);
+int32_t aSensorHallEffectOpen(i2c_master_bus_handle_t busHandle);
 
 /** Close the hall effect sensors that were opened with a call to
  * aSensorHallEffectOpen().  This does not power the sensors down;
@@ -117,12 +119,13 @@ void aSensorHallEffectClose();
  * @param pinIntLeft             the MCU pin which is connected to
  *                               the interrupt output of the right-hand
  *                               hall effect sensor.
- * @return                       ESP_OK on success, else error code.
+ * @return                       ESP_OK on success, else negative value
+ *                               from esp_err_t.
  */
-esp_err_t aSensorHallEffectReadStart(aSensorHallEffectCallbackRead_t pCallbackRead,
-                                     void *pCallbackReadParameter,
-                                     gpio_num_t pinIntLeft,
-                                     gpio_num_t pinIntRight);
+int32_t aSensorHallEffectReadStart(aSensorHallEffectCallbackRead_t pCallbackRead,
+                                   void *pCallbackReadParameter,
+                                   gpio_num_t pinIntLeft,
+                                   gpio_num_t pinIntRight);
 
 /** Stop the reading of the hall effect sensors that was started with
  * a call to aSensorHallEffectReadStart().  Once this has returned

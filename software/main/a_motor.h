@@ -64,9 +64,10 @@ typedef struct {
  * @param pinEnable  an MCU pin which, when pulled high, enables
  *                   drive to the motors; use -1 if there is no
  *                   such pin.
- * @return           ESP_OK on success, else negative error code.
+ * @return           ESP_OK on success, else a negative value
+ *                   from esp_err_t.
  */
-esp_err_t aMotorInit(gpio_num_t pinEnable);
+int32_t aMotorInit(gpio_num_t pinEnable);
 
 /** Open a motor; aMotorInit() must have returned successfully
  * before this function will return successfully.  Use aMotorClose()
@@ -109,7 +110,7 @@ aMotor_t *pAMotorOpen(gpio_num_t pinPwm,
  *
  * @return the last code from a failed call to pAMotorOpen().
  */
-esp_err_t aMotorOpenLastErrorGetReset();
+int32_t aMotorOpenLastErrorGetReset();
 
 /** Close a motor that was opened with a call to aMotorOpen(),
  * freeing resources.  If the motor was running it will be
@@ -124,17 +125,19 @@ void aMotorClose(aMotor_t *pMotor);
  *
  * @param[in] pMotor the motor to set the direction of; cannot
  *                   be NULL.
- * @return           ESP_OK on success, else error code.
+ * @return           ESP_OK on success, else a negative value
+ *                   from esp_err_t.
  */
-esp_err_t aMotorDirectionClockwiseSet(aMotor_t *pMotor);
+int32_t aMotorDirectionClockwiseSet(aMotor_t *pMotor);
 
 /** Set the direction of motor's rotation to anti-clockwise.
  *
  * @param[in] pMotor the motor to set the direction of; cannot
  *                   be NULL.
- * @return           ESP_OK on success, else error code.
+ * @return           ESP_OK on success, else a negative value
+ *                   from esp_err_t.
  */
-esp_err_t aMotorDirectionAnticlockwiseSet(aMotor_t *pMotor);
+int32_t aMotorDirectionAnticlockwiseSet(aMotor_t *pMotor);
 
 /** Get the direction of a motor's rotation.
  *
@@ -182,7 +185,7 @@ int32_t aMotorSpeedAbsoluteSet(aMotor_t *pMotor, size_t percent);
  *                   be NULL.
  * @return           on success the current speed, as a
  *                   percentage of the maximum speed, else
- *                   a negatve value from esp_err_t.
+ *                   a negative value from esp_err_t.
  */
 int32_t aMotorSpeedGet(aMotor_t *pMotor);
 

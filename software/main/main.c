@@ -25,6 +25,7 @@
 
 #include <a_util.h>
 #include <a_sensor_hall_effect.h>
+#include <a_gpio.h>
 #include <a_pwm.h>
 #include <a_motor.h>
 
@@ -49,10 +50,8 @@
 #define A_PIN_SENSOR_HALL_EFFECT_INT_LEFT      11
 #define A_PIN_SENSOR_HALL_EFFECT_INT_RIGHT     12
 
-#define A_PIN_LED_HEADLIGHTS                   17
-#define A_PIN_LED_BREAKLIGHTS                  18
-#define A_PIN_LED_INDICATOR_LEFT               38
-#define A_PIN_LED_INDICATOR_RIGHT              39
+#define A_PIN_LIMIT_SWITCH_LEFT                43
+#define A_PIN_LIMIT_SWITCH_RIGHT               44
 
 // The size of averaging buffer to use.
 #define A_AVERAGING_BUFFER_LENGTH 32
@@ -68,7 +67,7 @@
 #define A_MOTOR_DRIVING_CHANGE_PERCENT 10
 
 // Which direction of the steering motor amounts to clockwise.
-#define A_MOTOR_STEERING_LEFT_IS_CLOCKWISE false
+#define A_MOTOR_STEERING_LEFT_IS_CLOCKWISE true
 
 // The speed at which to run the steering motor during
 // a steering pulse, as a percentage.
@@ -76,7 +75,7 @@
 
 // The duration of a single pulse of the steering motor,
 // in milliseconds.
-#define A_MOTOR_STEERING_PULSE_DURATION_MS 1000
+#define A_MOTOR_STEERING_PULSE_DURATION_MS 100
 
 /* ----------------------------------------------------------------
  * TYPES
@@ -177,76 +176,88 @@ static aCommand_t commandGet()
 
 // Increment the steering in the left or right direction, returning
 // a negative error code on failure.
-static esp_err_t commandSteeringPulse(aMotor_t *pMotorSteering,
-                                      bool clockwiseNotAnticlockwise)
+static int32_t commandSteeringPulse(aMotor_t *pMotorSteering,
+                                    bool clockwiseNotAnticlockwise,
+                                    gpio_num_t pinLimit)
 {
-    esp_err_t espErr = ESP_ERR_INVALID_ARG;
+    int32_t negEspErr = -ESP_ERR_INVALID_ARG;
 
     if (pMotorSteering) {
         if (clockwiseNotAnticlockwise) {
-            espErr = aMotorDirectionClockwiseSet(pMotorSteering);
+            negEspErr = aMotorDirectionClockwiseSet(pMotorSteering);
         } else {
-            espErr = aMotorDirectionAnticlockwiseSet(pMotorSteering);
+            negEspErr = aMotorDirectionAnticlockwiseSet(pMotorSteering);
         }
-        if (espErr == ESP_OK) {
-            espErr = aMotorSpeedAbsoluteSet(pMotorSteering,
-                                            A_MOTOR_STEERING_PULSE_SPEED_PERCENT);
-        }
-        if (espErr == A_MOTOR_STEERING_PULSE_SPEED_PERCENT) {
-            aUtilDelayMs(A_MOTOR_STEERING_PULSE_DURATION_MS);
-            espErr = aMotorSpeedAbsoluteSet(pMotorSteering, 0);
+        if (negEspErr == ESP_OK) {
+            int64_t startTimeMs = aUtilTimeSinceBootMs();
+            if (aGpioDebounceGet(pinLimit) > 0) {
+                negEspErr = aMotorSpeedAbsoluteSet(pMotorSteering,
+                                                   A_MOTOR_STEERING_PULSE_SPEED_PERCENT);
+                if (negEspErr == A_MOTOR_STEERING_PULSE_SPEED_PERCENT) {
+                    while ((aGpioDebounceGet(pinLimit) > 0) &&
+                           (aUtilTimeSinceBootMs() - startTimeMs < A_MOTOR_STEERING_PULSE_DURATION_MS)) {
+                        aUtilDelayMs(1);
+                    }
+                    negEspErr = aMotorSpeedAbsoluteSet(pMotorSteering, 0);
+                }
+            }
+            if (aGpioDebounceGet(pinLimit) == 0) {
+                printf("Full lock!\n");
+            }
         }
     }
 
-    return espErr;
+    return negEspErr;
 }
 
 // Act on a command from the user, returning a negative
 // error code on failure.
-static esp_err_t commandProcess(aCommand_t command,
-                                aMotor_t *pMotorDriving,
-                                aMotor_t *pMotorSteering)
+static int32_t commandProcess(aCommand_t command,
+                              aMotor_t *pMotorDriving,
+                              aMotor_t *pMotorSteering)
 {
-    esp_err_t espErr = ESP_ERR_NOT_FOUND;
+    int32_t negEspErr = -ESP_ERR_NOT_FOUND;
 
     switch (command) {
         case A_COMMAND_NONE:
-            espErr = ESP_OK;
+            negEspErr = ESP_OK;
         break;
         case A_COMMAND_SPEED_INCREASE:
             if (pMotorDriving) {
-                espErr = aMotorSpeedRelativeSet(pMotorDriving,
-                                                A_MOTOR_DRIVING_CHANGE_PERCENT);
+                negEspErr = aMotorSpeedRelativeSet(pMotorDriving,
+                                                   A_MOTOR_DRIVING_CHANGE_PERCENT);
             }
         break;
         case A_COMMAND_SPEED_DECREASE:
             if (pMotorDriving) {
-                espErr = aMotorSpeedRelativeSet(pMotorDriving,
-                                                -A_MOTOR_DRIVING_CHANGE_PERCENT);
+                negEspErr = aMotorSpeedRelativeSet(pMotorDriving,
+                                                   -A_MOTOR_DRIVING_CHANGE_PERCENT);
             }
         break;
         case A_COMMAND_SPEED_ZERO:
             if (pMotorDriving) {
-                espErr = aMotorSpeedAbsoluteSet(pMotorDriving, 0);
+                negEspErr = aMotorSpeedAbsoluteSet(pMotorDriving, 0);
             }
         break;
         case A_COMMAND_STEER_LEFT:
-            espErr = commandSteeringPulse(pMotorSteering,
-                                          A_MOTOR_STEERING_LEFT_IS_CLOCKWISE);
+            negEspErr = commandSteeringPulse(pMotorSteering,
+                                             A_MOTOR_STEERING_LEFT_IS_CLOCKWISE,
+                                             A_PIN_LIMIT_SWITCH_LEFT);
         break;
         case A_COMMAND_STEER_RIGHT:
-            espErr = commandSteeringPulse(pMotorSteering,
-                                          !A_MOTOR_STEERING_LEFT_IS_CLOCKWISE);
+            negEspErr = commandSteeringPulse(pMotorSteering,
+                                             !A_MOTOR_STEERING_LEFT_IS_CLOCKWISE,
+                                             A_PIN_LIMIT_SWITCH_RIGHT);
         break;
         case A_COMMAND_EXIT:
             // Nothing to do here
         break;
         default:
-            espErr = ESP_ERR_INVALID_ARG;
+            negEspErr = -ESP_ERR_INVALID_ARG;
         break;
     }
 
-    return espErr;
+    return negEspErr;
 }
 
 // Add a new reading to the averaging buffer for a given direction.
@@ -302,31 +313,43 @@ static void callbackRead(aSensorHallEffectDirection_t direction,
 
 void app_main(void)
 {
-    esp_err_t espErr;
+    int32_t negEspErr;
     i2c_master_bus_handle_t busHandle;
     aMotor_t *pMotorDriving = NULL;
     aMotor_t *pMotorSteering = NULL;
 
     // Open the I2C bus
-    espErr = i2c_new_master_bus(&gI2cMasterBusConfig, &busHandle);
-    if (espErr == ESP_OK) {
+    negEspErr = -i2c_new_master_bus(&gI2cMasterBusConfig, &busHandle);
+    if (negEspErr == ESP_OK) {
         // Initialise the hall effect stuff
-        espErr = aSensorHallEffectInit(busHandle,
-                                       A_PIN_SENSOR_HALL_EFFECT_DISABLE_LEFT,
-                                       A_PIN_SENSOR_HALL_EFFECT_DISABLE_RIGHT);
-        if (espErr == ESP_OK) {
+        negEspErr = aSensorHallEffectInit(busHandle,
+                                          A_PIN_SENSOR_HALL_EFFECT_DISABLE_LEFT,
+                                          A_PIN_SENSOR_HALL_EFFECT_DISABLE_RIGHT);
+        if (negEspErr == ESP_OK) {
+            // Set the steering limit switches as inputs with pull-ups
+            negEspErr = aGpioInputSet(A_PIN_LIMIT_SWITCH_LEFT, true);
+            if (negEspErr == ESP_OK) {
+                negEspErr = aGpioInputSet(A_PIN_LIMIT_SWITCH_RIGHT, true);
+            }
+        }
+        if (negEspErr == ESP_OK) {
+            // Start debouncing the limit switches
+            negEspErr = aGpioDebounceInit((((uint64_t) 1) << A_PIN_LIMIT_SWITCH_LEFT) |
+                                          (((uint64_t) 1) << A_PIN_LIMIT_SWITCH_RIGHT));
+        }
+        if (negEspErr == ESP_OK) {
             // Initialse PWM
-            espErr = aPwmInit();
+            negEspErr = aPwmInit();
         }
-        if (espErr == ESP_OK) {
+        if (negEspErr == ESP_OK) {
             // Initialise the motor driver
-            espErr = aMotorInit(A_PIN_MOTOR_ENABLE);
+            negEspErr = aMotorInit(A_PIN_MOTOR_ENABLE);
         }
-        if (espErr == ESP_OK) {
+        if (negEspErr == ESP_OK) {
             // Open the hall effect stuff
-            espErr = aSensorHallEffectOpen(busHandle);
+            negEspErr = aSensorHallEffectOpen(busHandle);
         }
-        if (espErr == ESP_OK) {
+        if (negEspErr == ESP_OK) {
             // Open the driving motor
             pMotorDriving = pAMotorOpen(A_PIN_MOTOR_DRIVING_PWM,
                                         A_PIN_MOTOR_DRIVING_CONTROL_1,
@@ -344,20 +367,20 @@ void app_main(void)
                                          A_PIN_MOTOR_STEERING_CONTROL_2,
                                          "steering");
         } else {
-            espErr = aMotorOpenLastErrorGetReset();
+            negEspErr = aMotorOpenLastErrorGetReset();
         }
         if (pMotorSteering != NULL) {
             // Configure the driving motor to transit between speeds gently
             aMotorSpeedTransitionTimeSet(pMotorDriving,
                                          A_MOTOR_DRIVING_TRANSITION_TIME_MS);
             // Start the hall effect stuff reading
-            espErr = aSensorHallEffectReadStart(callbackRead, NULL,
-                                                A_PIN_SENSOR_HALL_EFFECT_INT_LEFT,
-                                                A_PIN_SENSOR_HALL_EFFECT_INT_RIGHT);
+            negEspErr = aSensorHallEffectReadStart(callbackRead, NULL,
+                                                   A_PIN_SENSOR_HALL_EFFECT_INT_LEFT,
+                                                   A_PIN_SENSOR_HALL_EFFECT_INT_RIGHT);
         } else {
-            espErr = aMotorOpenLastErrorGetReset();
+            negEspErr = aMotorOpenLastErrorGetReset();
         }
-        if (espErr == ESP_OK) {
+        if (negEspErr == ESP_OK) {
             printf("Reading (in micro-Teslas); if this is the ESP-IDF monitor"
                    " program, press CTRL ] to terminate:\n");
             int64_t startTimeMs = aUtilTimeSinceBootMs();
@@ -401,15 +424,17 @@ void app_main(void)
         aSensorHallEffectClose();
         aMotorClose(pMotorDriving);
         aMotorClose(pMotorSteering);
-        aSensorHallEffectDeinit();
         aMotorDeinit();
+        aPwmDeinit();
+        aGpioDebounceDeinit();
+        aSensorHallEffectDeinit();
         i2c_del_master_bus(busHandle);
     }
 
-    if (espErr == ESP_OK) {
+    if (negEspErr == ESP_OK) {
         printf("Finished.\n");
     } else {
-        printf("Unable to start, ESP error 0x%02x.\n", espErr);
+        printf("Unable to start, error 0x%02x.\n", (int) negEspErr);
     }
     printf("If this is the ESP-IDF monitor program, press CTRL ] to terminate it.\n");
 }

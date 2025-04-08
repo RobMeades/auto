@@ -71,15 +71,6 @@ int64_t aUtilTimeSinceBootMs();
  */
 void aUtilDelayMs(size_t timeMs);
 
-/** Set an MCU pin to be an output at the given level; the level
- * on the output pin can be read-back afterwards.
- *
- * @param pin   the MCU pin to set.
- * @param level the level, 0 for low, else high.
- * @return      ESP_OK on success, else error code.
- */
-esp_err_t aUtilPinOutputSet(gpio_num_t pin, int32_t level);
-
 /** Add an entry to the start of a linked list.  This function is
  * NOT thread-safe.
  *

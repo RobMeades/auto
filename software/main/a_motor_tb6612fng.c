@@ -29,6 +29,7 @@
 #include <driver/ledc.h>
 
 #include <a_util.h>
+#include <a_gpio.h>
 #include <a_pwm.h>
 #include <a_motor.h>
 
@@ -44,10 +45,10 @@
  * -------------------------------------------------------------- */
 
 // Function entry macro; used where thread-safety is required.
-#define A_TB6612FNG_LOCK(espErr)    espErr = (int32_t) ESP_ERR_INVALID_STATE;               \
-                                    if (gMutex != NULL) {                                   \
-                                        espErr = (int32_t) ESP_OK;                      \
-                                        xSemaphoreTake(gMutex, (TickType_t) portMAX_DELAY);
+#define A_TB6612FNG_LOCK(negEspErr)    negEspErr = -ESP_ERR_INVALID_STATE;       \
+                                       if (gMutex != NULL) {                     \
+                                           negEspErr = ESP_OK;                   \
+                                           xSemaphoreTake(gMutex, (TickType_t) portMAX_DELAY);
 
 // Function exit macro; must be used after A_TB6612FNG_LOCK().
 #define A_TB6612FNG_UNLOCK()            xSemaphoreGive(gMutex);   \
@@ -71,52 +72,52 @@ static aUtilLinkedList_t *gpMotorList = NULL; // A list of aMotor_t entries.
 static gpio_num_t gPinEnable = -1;
 
 // A place to store the last error code from a call to aMotorOpen().
-static esp_err_t gMotorOpenLastErrorCode = ESP_OK;
+static int32_t gMotorOpenLastErrorCode = ESP_OK;
 
 /* ----------------------------------------------------------------
  * STATIC FUNCTIONS
  * -------------------------------------------------------------- */
 
 // Set the direction pins.
-static esp_err_t setDirectionPinsClockwise(bool clockwiseNotAnticlockwise,
-                                           gpio_num_t pinMotorControl1,
-                                           gpio_num_t pinMotorControl2)
+static int32_t setDirectionPinsClockwise(bool clockwiseNotAnticlockwise,
+                                         gpio_num_t pinMotorControl1,
+                                         gpio_num_t pinMotorControl2)
 {
-    esp_err_t espErr;
+    int32_t negEspErr;
 
     if (clockwiseNotAnticlockwise) {
         // From the TB6612FNG data-sheet, control input 1 high,
         // control input 2 low, means clockwise
-        espErr = gpio_set_level(pinMotorControl1, 1);
-        if (espErr == ESP_OK) {
-            espErr = gpio_set_level(pinMotorControl2, 0);
+        negEspErr = -gpio_set_level(pinMotorControl1, 1);
+        if (negEspErr == ESP_OK) {
+            negEspErr = -gpio_set_level(pinMotorControl2, 0);
         }
     } else {
         // Conversely, control input 1 low, control input 2 high
         // means anti-clockwise
-        espErr = gpio_set_level(pinMotorControl1, 0);
-        if (espErr == ESP_OK) {
-            espErr = gpio_set_level(pinMotorControl2, 1);
+        negEspErr = -gpio_set_level(pinMotorControl1, 0);
+        if (negEspErr == ESP_OK) {
+            negEspErr = -gpio_set_level(pinMotorControl2, 1);
         }
     }
 
-    return espErr;
+    return negEspErr;
 }
 
 // Set the direction of motor's rotation to clockwise or anticlockwise.
-static esp_err_t setDirectionClockwise(aMotor_t *pMotor,
-                                       bool clockwiseNotAnticlockwise)
+static int32_t setDirectionClockwise(aMotor_t *pMotor,
+                                     bool clockwiseNotAnticlockwise)
 {
-    esp_err_t espErr;
+    int32_t negEspErr;
 
-    A_TB6612FNG_LOCK(espErr);
+    A_TB6612FNG_LOCK(negEspErr);
 
-    espErr = ESP_ERR_INVALID_ARG;
+    negEspErr = -ESP_ERR_INVALID_ARG;
     if (pMotor != NULL) {
-        espErr = setDirectionPinsClockwise(clockwiseNotAnticlockwise,
-                                           pMotor->pinMotorControl1,
-                                           pMotor->pinMotorControl2);
-        if (espErr == ESP_OK) {
+        negEspErr = setDirectionPinsClockwise(clockwiseNotAnticlockwise,
+                                              pMotor->pinMotorControl1,
+                                              pMotor->pinMotorControl2);
+        if (negEspErr == ESP_OK) {
             pMotor->directionIsAnticlockwise = !clockwiseNotAnticlockwise;
             printf(A_LOG_TAG "motor \"%s\" set to %sclockwise.\n",
                    pMotor->pNameStr,
@@ -126,7 +127,7 @@ static esp_err_t setDirectionClockwise(aMotor_t *pMotor,
 
     A_TB6612FNG_UNLOCK();
 
-    return espErr;
+    return negEspErr;
 }
 
 // Close a motor, freeing memory, removing it from the linked list.
@@ -151,7 +152,7 @@ static void motorClose(aMotor_t *pMotor)
         if ((gpMotorList == NULL) && (gPinEnable >= 0)) {
             // If there are no more motors in the list,
             // set the enable pin low as well
-            aUtilPinOutputSet(gPinEnable, 0);
+            aGpioOutputSet(gPinEnable, 0);
         }
         printf(A_LOG_TAG "motor \"%s\" closed.\n", pNameStr);
     }
@@ -162,26 +163,26 @@ static void motorClose(aMotor_t *pMotor)
  * -------------------------------------------------------------- */
 
 // Initialise this API.
-esp_err_t aMotorInit(gpio_num_t pinEnable)
+int32_t aMotorInit(gpio_num_t pinEnable)
 {
-    esp_err_t espErr = ESP_OK;
+    int32_t negEspErr = ESP_OK;
 
     if (gMutex == NULL) {
         // Set the enable pin to low
-        espErr = aUtilPinOutputSet(pinEnable, 0);
-        if (espErr == ESP_OK) {
+        negEspErr = aGpioOutputSet(pinEnable, 0);
+        if (negEspErr == ESP_OK) {
             // Create a mutex to arbitrate activity
-            espErr = ESP_ERR_NO_MEM;
+            negEspErr = -ESP_ERR_NO_MEM;
             gMutex = xSemaphoreCreateMutex();
             if (gMutex != NULL) {
                 // Store the enable pin for use later
                 gPinEnable = pinEnable;
-                espErr = ESP_OK;
+                negEspErr = ESP_OK;
             }
         }
     }
 
-    if (espErr == ESP_OK) {
+    if (negEspErr == ESP_OK) {
         printf(A_LOG_TAG "motor driver initialised.\n");
     } else {
         // Clean up on error
@@ -191,10 +192,10 @@ esp_err_t aMotorInit(gpio_num_t pinEnable)
         }
         gPinEnable = -1;
         printf(A_LOG_TAG "unable to initialise motor driver"
-               " (0x%02x)!\n", espErr);
+               " (0x%02x)!\n", (int) negEspErr);
     }
 
-    return espErr;
+    return negEspErr;
 }
 
 // Open a motor.
@@ -203,19 +204,19 @@ aMotor_t *pAMotorOpen(gpio_num_t pinPwm,
                       gpio_num_t pinMotorControl2,
                       const char *pNameStr)
 {
-    esp_err_t espErr;
+    int32_t negEspErr;
     aPwm_t *pPwm = NULL;
     aMotor_t *pMotor = NULL;
 
-    A_TB6612FNG_LOCK(espErr);
+    A_TB6612FNG_LOCK(negEspErr);
 
     // Set the pins as outputs and low (for off)
-    espErr = aUtilPinOutputSet(pinMotorControl1, 0);
-    if (espErr == ESP_OK) {
-        espErr = aUtilPinOutputSet(pinMotorControl2, 0);
+    negEspErr = aGpioOutputSet(pinMotorControl1, 0);
+    if (negEspErr == ESP_OK) {
+        negEspErr = aGpioOutputSet(pinMotorControl2, 0);
     }
-    if (espErr == ESP_OK) {
-        espErr = ESP_ERR_NO_MEM;
+    if (negEspErr == ESP_OK) {
+        negEspErr = -ESP_ERR_NO_MEM;
         // Allocate memory for the motor
         pMotor = (aMotor_t *) malloc(sizeof(*pMotor));
         if (pMotor != NULL) {
@@ -224,16 +225,16 @@ aMotor_t *pAMotorOpen(gpio_num_t pinPwm,
             pPwm = pAPwmOpen(pinPwm, pNameStr);
             if (pPwm != NULL) {
                 // Set the direction or it won't go
-                espErr = setDirectionPinsClockwise(true,
-                                                   pinMotorControl1,
-                                                   pinMotorControl2);
+                negEspErr = setDirectionPinsClockwise(true,
+                                                      pinMotorControl1,
+                                                      pinMotorControl2);
             } else {
-                espErr = aPwmOpenLastErrorGetReset();
+                negEspErr = aPwmOpenLastErrorGetReset();
             }
-            if (espErr == ESP_OK) {
+            if (negEspErr == ESP_OK) {
                 // Populate the rest and add the motor
                 // to the linked list
-                espErr = ESP_ERR_NO_MEM;
+                negEspErr = -ESP_ERR_NO_MEM;
                 pMotor->pPwm = pPwm;
                 pMotor->pinMotorControl1 = pinMotorControl1;
                 pMotor->pinMotorControl2 = pinMotorControl2;
@@ -243,7 +244,7 @@ aMotor_t *pAMotorOpen(gpio_num_t pinPwm,
                 }
                 // Add the motor to the linked list
                 if (aUtilLinkedListAdd(&gpMotorList, pMotor)) {
-                    espErr = ESP_OK;
+                    negEspErr = ESP_OK;
                 }
             }
         }
@@ -251,21 +252,21 @@ aMotor_t *pAMotorOpen(gpio_num_t pinPwm,
 
     A_TB6612FNG_UNLOCK();
 
-    if (espErr < 0) {
+    if (negEspErr < 0) {
         // Clean up on error
         aPwmClose(pPwm);
         free(pMotor);
-        gMotorOpenLastErrorCode = espErr;
+        gMotorOpenLastErrorCode = negEspErr;
         printf(A_LOG_TAG "unable to open motor \"%s\","
                " PWM pin %d, control pins %d and %d (0x%02x)!\n",
                pNameStr, pinPwm, pinMotorControl1,
-               pinMotorControl2, espErr);
+               pinMotorControl2, (int) negEspErr);
     } else {
         if (gPinEnable >= 0) {
             // Make sure the enable pin is set high; don't check
             // for errors here as this would have barfed during
             // aMotorInit() if it was going to barf
-            aUtilPinOutputSet(gPinEnable, 1);
+            aGpioOutputSet(gPinEnable, 1);
         }
         printf(A_LOG_TAG "motor \"%s\" opened,"
                " PWM pin %d, control pins %d and %d.\n",
@@ -278,38 +279,38 @@ aMotor_t *pAMotorOpen(gpio_num_t pinPwm,
 }
 
 // Get the last error code from a failed call to pAMotorOpen().
-esp_err_t aMotorOpenLastErrorGetReset()
+int32_t aMotorOpenLastErrorGetReset()
 {
-    esp_err_t espErr = gMotorOpenLastErrorCode;
+    int32_t negEspErr = gMotorOpenLastErrorCode;
 
     gMotorOpenLastErrorCode = ESP_OK;
 
-    return espErr;
+    return negEspErr;
 }
 
 // Close a motor.
 void aMotorClose(aMotor_t *pMotor)
 {
-    esp_err_t espErr;
+    int32_t negEspErr;
 
-    A_TB6612FNG_LOCK(espErr);
+    A_TB6612FNG_LOCK(negEspErr);
 
     motorClose(pMotor);
 
     A_TB6612FNG_UNLOCK();
 
-    // To prevent compiler warnings as we aren't returning espErr
-    (void) espErr;
+    // To prevent compiler warnings as we aren't returning negEspErr
+    (void) negEspErr;
 }
 
 // Set the direction of motor's rotation to clockwise.
-esp_err_t aMotorDirectionClockwiseSet(aMotor_t *pMotor)
+int32_t aMotorDirectionClockwiseSet(aMotor_t *pMotor)
 {
     return setDirectionClockwise(pMotor, true);
 }
 
 // Set the direction of motor's rotation to anti-clockwise.
-esp_err_t aMotorDirectionAnticlockwiseSet(aMotor_t *pMotor)
+int32_t aMotorDirectionAnticlockwiseSet(aMotor_t *pMotor)
 {
     return setDirectionClockwise(pMotor, false);
 }
@@ -317,112 +318,112 @@ esp_err_t aMotorDirectionAnticlockwiseSet(aMotor_t *pMotor)
 // Get the direction of a motor's rotation.
 int32_t aMotorDirectionIsClockwise(aMotor_t *pMotor)
 {
-    int32_t directionOrEspErr;
+    int32_t directionOrNegEspErr;
 
-    A_TB6612FNG_LOCK(directionOrEspErr);
+    A_TB6612FNG_LOCK(directionOrNegEspErr);
 
-    directionOrEspErr = (int32_t) ESP_ERR_INVALID_ARG;
+    directionOrNegEspErr = -ESP_ERR_INVALID_ARG;
     if (pMotor != NULL) {
-        directionOrEspErr = (int32_t) !pMotor->directionIsAnticlockwise;
+        directionOrNegEspErr = (int32_t) !pMotor->directionIsAnticlockwise;
     }
 
     A_TB6612FNG_UNLOCK();
 
-    return directionOrEspErr;
+    return directionOrNegEspErr;
 }
 
 // Set the speed of a motor relative to its current speed.
 int32_t aMotorSpeedRelativeSet(aMotor_t *pMotor, int32_t percent)
 {
-    int32_t speedPercentOrEspErr;
+    int32_t speedPercentOrNegEspErr;
 
-    A_TB6612FNG_LOCK(speedPercentOrEspErr);
+    A_TB6612FNG_LOCK(speedPercentOrNegEspErr);
 
-    speedPercentOrEspErr = ESP_ERR_INVALID_ARG;
+    speedPercentOrNegEspErr = -ESP_ERR_INVALID_ARG;
     if (pMotor != NULL) {
-        speedPercentOrEspErr = aPwmRateRelativeSet(pMotor->pPwm, percent);
+        speedPercentOrNegEspErr = aPwmRateRelativeSet(pMotor->pPwm, percent);
     }
 
     A_TB6612FNG_UNLOCK();
 
-    return speedPercentOrEspErr;
+    return speedPercentOrNegEspErr;
 }
 
 // Set the speed of a motor to an absolute value.
 int32_t aMotorSpeedAbsoluteSet(aMotor_t *pMotor, size_t percent)
 {
-    int32_t speedPercentOrEspErr;
+    int32_t speedPercentOrNegEspErr;
 
-    A_TB6612FNG_LOCK(speedPercentOrEspErr);
+    A_TB6612FNG_LOCK(speedPercentOrNegEspErr);
 
-    speedPercentOrEspErr = (int32_t) ESP_ERR_INVALID_ARG;
+    speedPercentOrNegEspErr = -ESP_ERR_INVALID_ARG;
     if (pMotor != NULL) {
-        speedPercentOrEspErr = aPwmRateAbsoluteSet(pMotor->pPwm, percent);
+        speedPercentOrNegEspErr = aPwmRateAbsoluteSet(pMotor->pPwm, percent);
     }
 
     A_TB6612FNG_UNLOCK();
 
-    return speedPercentOrEspErr;
+    return speedPercentOrNegEspErr;
 }
 
 // Get the current speed of a motor.
 int32_t aMotorSpeedGet(aMotor_t *pMotor)
 {
-    int32_t speedPercentOrEspErr;
+    int32_t speedPercentOrNegEspErr;
 
-    A_TB6612FNG_LOCK(speedPercentOrEspErr);
+    A_TB6612FNG_LOCK(speedPercentOrNegEspErr);
 
-    speedPercentOrEspErr = (int32_t) ESP_ERR_INVALID_ARG;
+    speedPercentOrNegEspErr = -ESP_ERR_INVALID_ARG;
     if (pMotor != NULL) {
-        speedPercentOrEspErr = (int32_t) aPwmRateGet(pMotor->pPwm);
+        speedPercentOrNegEspErr = (int32_t) aPwmRateGet(pMotor->pPwm);
     }
 
     A_TB6612FNG_UNLOCK();
 
-    return speedPercentOrEspErr;
+    return speedPercentOrNegEspErr;
 }
 
 // Set the transition time for a speed change.
 int32_t aMotorSpeedTransitionTimeSet(aMotor_t *pMotor, size_t timeMs)
 {
-    int32_t timeMsOrEspErr;
+    int32_t timeMsOrNegEspErr;
 
-    A_TB6612FNG_LOCK(timeMsOrEspErr);
+    A_TB6612FNG_LOCK(timeMsOrNegEspErr);
 
-    timeMsOrEspErr = (int32_t) ESP_ERR_INVALID_ARG;
+    timeMsOrNegEspErr = -ESP_ERR_INVALID_ARG;
     if (pMotor != NULL) {
-        timeMsOrEspErr = aPwmRateTransitionTimeSet(pMotor->pPwm, timeMs);
+        timeMsOrNegEspErr = aPwmRateTransitionTimeSet(pMotor->pPwm, timeMs);
     }
 
     A_TB6612FNG_UNLOCK();
 
-    return timeMsOrEspErr;
+    return timeMsOrNegEspErr;
 }
 
 // Get the transition time for a speed change.
 int32_t aMotorSpeedTransitionTimeGet(aMotor_t *pMotor)
 {
-    int32_t timeMsOrEspErr;
+    int32_t timeMsOrNegEspErr;
 
-    A_TB6612FNG_LOCK(timeMsOrEspErr);
+    A_TB6612FNG_LOCK(timeMsOrNegEspErr);
 
-    timeMsOrEspErr = (int32_t) ESP_ERR_INVALID_ARG;
+    timeMsOrNegEspErr = -ESP_ERR_INVALID_ARG;
     if (pMotor != NULL) {
-        timeMsOrEspErr = aPwmRateTransitionTimeGet(pMotor->pPwm);
+        timeMsOrNegEspErr = aPwmRateTransitionTimeGet(pMotor->pPwm);
     }
 
     A_TB6612FNG_UNLOCK();
 
-    return timeMsOrEspErr;
+    return timeMsOrNegEspErr;
 }
 
 // Deinitialise motors and free resources.
 void aMotorDeinit()
 {
-    esp_err_t espErr;
+    esp_err_t negEspErr;
     aMotor_t *pMotor;
 
-    A_TB6612FNG_LOCK(espErr);
+    A_TB6612FNG_LOCK(negEspErr);
 
     // Free each motor
     do {
@@ -447,8 +448,8 @@ void aMotorDeinit()
         gMutex = NULL;
     }
 
-    // To prevent compiler warnings as we aren't returning espErr
-    (void) espErr;
+    // To prevent compiler warnings as we aren't returning negEspErr
+    (void) negEspErr;
 }
 
 // End of file

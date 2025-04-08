@@ -4,7 +4,13 @@ This code builds under ESP-IDF, which can be installed by following the instruct
 https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/get-started/index.html#installation
 
 # Configuration
-If you wish to control the `auto` via the USB port, you need to configure the ESP32 device to support USB input.  This can be done by enabling the following in your `sdkconfig` using `menuconfig`:
+For debouncing of GPIO inputs this code uses the ESP-IDF timer interrupt, so it is necessary to enable:
+
+`CONFIG_ESP_TIMER_SUPPORTS_ISR_DISPATCH_METHOD`
+
+...in `sdkconfig` using `menuconfig`.
+
+So that the UART0 pins (43 and 44) can be used as GPIOs, and also to control the `auto` via the USB port, you also need to disable console output through UART and enable USB console input:
 
 `CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG`
 

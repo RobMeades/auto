@@ -66,7 +66,7 @@ typedef struct {
  *
  * @return  ESP_OK on success, else negative error code.
  */
-esp_err_t aPwmInit();
+int32_t aPwmInit();
 
 /** Open a PWM; aPwmInit() must have returned successfully
  * before this function will return successfully.  Use aPwmClose()
@@ -97,7 +97,7 @@ aPwm_t *pAPwmOpen(gpio_num_t pin, const char *pNameStr);
  *
  * @return the last code from a failed call to pAPwmOpen().
  */
-esp_err_t aPwmOpenLastErrorGetReset();
+int32_t aPwmOpenLastErrorGetReset();
 
 /** Close a PWM that was opened with a call to pAPwmOpen(),
  * freeing resources.  If the PWM was running it will be
@@ -157,7 +157,7 @@ int32_t aPwmRateTransitionTimeSet(aPwm_t *pPwm, size_t timeMs);
  *                  cannot be NULL.
  * @return          on success the transition time for a
  *                  rate change in milliseconds, else a
- *                  negatve value from esp_err_t.
+ *                  negative value from esp_err_t.
  */
 int32_t aPwmRateTransitionTimeGet(aPwm_t *pPwm);
 

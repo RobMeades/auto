@@ -42,9 +42,9 @@
  * -------------------------------------------------------------- */
 
 // Function entry macro; used where thread-safety is required.
-#define A_PWM_LOCK(espErr)    espErr = (int32_t) ESP_ERR_INVALID_STATE;               \
-                              if (gMutex != NULL) {                                   \
-                                  espErr = (int32_t) ESP_OK;                      \
+#define A_PWM_LOCK(negEspErr) negEspErr = -ESP_ERR_INVALID_STATE;          \
+                              if (gMutex != NULL) {                        \
+                                  negEspErr = ESP_OK;                      \
                                   xSemaphoreTake(gMutex, (TickType_t) portMAX_DELAY);
 
 // Function exit macro; must be used after A_PWM_LOCK().
@@ -92,7 +92,7 @@ static SemaphoreHandle_t gSemaphoreRateTransition[LEDC_CHANNEL_MAX] = {0};
 static aPwm_t *gpPwmTimerList[LEDC_TIMER_MAX] = {0};
 
 // A place to store the last error code from a call to aPwmOpen().
-static esp_err_t gPwmOpenLastErrorCode = ESP_OK;
+static int32_t gPwmOpenLastErrorCode = ESP_OK;
 
 // NOTE: there are more variables after the static functions.
 
@@ -145,17 +145,17 @@ static aPwm_t **ppFindEntry(aPwm_t *pPwm, aPwm_t **ppList,
 // before this is called.
 static int32_t setAndLimitRate(aPwm_t *pPwm, int32_t percent)
 {
-    esp_err_t espErr = ESP_ERR_INVALID_ARG;
-    int32_t ratePercentOrEspErr = percent;
+    int32_t negEspErr = -ESP_ERR_INVALID_ARG;
+    int32_t ratePercentOrNegEspErr = percent;
     size_t rateTransitionTimeMs;
     aPwm_t **ppChannel = NULL;
     size_t targetDuty = 0;
     ledc_channel_t pwmChannel;
 
-    if (ratePercentOrEspErr < 0) {
-        ratePercentOrEspErr = 0;
-    } else if (ratePercentOrEspErr > 100) {
-        ratePercentOrEspErr = 100;
+    if (ratePercentOrNegEspErr < 0) {
+        ratePercentOrNegEspErr = 0;
+    } else if (ratePercentOrNegEspErr > 100) {
+        ratePercentOrNegEspErr = 100;
     }
 
     rateTransitionTimeMs = pPwm->rateTransitionTimeMs;
@@ -175,28 +175,28 @@ static int32_t setAndLimitRate(aPwm_t *pPwm, int32_t percent)
         xSemaphoreTake(gSemaphoreRateTransition[pwmChannel],
                        (TickType_t) portMAX_DELAY);
         // Fade to the target duty cycle
-        targetDuty = percentToDuty(ratePercentOrEspErr);
-        espErr = ledc_set_fade_time_and_start(A_PWM_SPEED_MODE,
-                                              pwmChannel,
-                                              targetDuty,
-                                              rateTransitionTimeMs,
-                                              LEDC_FADE_NO_WAIT);
+        targetDuty = percentToDuty(ratePercentOrNegEspErr);
+        negEspErr = -ledc_set_fade_time_and_start(A_PWM_SPEED_MODE,
+                                                  pwmChannel,
+                                                  targetDuty,
+                                                  rateTransitionTimeMs,
+                                                  LEDC_FADE_NO_WAIT);
     }
 
-    if (espErr != ESP_OK) {
+    if (negEspErr != ESP_OK) {
         printf(A_LOG_TAG "unable to set PWM \"%s\" rate to %d%%"
               " (duty cycle %d), transition time %d ms (0x%02x)!.\n",
-              pPwm->pNameStr, (int) ratePercentOrEspErr, targetDuty,
+              pPwm->pNameStr, (int) ratePercentOrNegEspErr, targetDuty,
               rateTransitionTimeMs,
-              (int) espErr);
-        ratePercentOrEspErr = (int32_t) espErr;
+              (int) negEspErr);
+        ratePercentOrNegEspErr = negEspErr;
     } else {
-        pPwm->ratePercent = (size_t) ratePercentOrEspErr;
+        pPwm->ratePercent = (size_t) ratePercentOrNegEspErr;
         printf(A_LOG_TAG "PWM \"%s\" rate set to %d%%.\n", pPwm->pNameStr,
                pPwm->ratePercent);
     }
 
-    return  ratePercentOrEspErr;
+    return  ratePercentOrNegEspErr;
 }
 
 // Close a PWM, freeing memory, removing it from the linked list.
@@ -263,21 +263,21 @@ static ledc_cbs_t gPwmCallbacks = {
  * -------------------------------------------------------------- */
 
 // Initialise this API.
-esp_err_t aPwmInit()
+int32_t aPwmInit()
 {
-    esp_err_t espErr = ESP_OK;
+    int32_t negEspErr = ESP_OK;
 
     if (gMutex == NULL) {
         // Create a mutex to arbitrate activity
-        espErr = ESP_ERR_NO_MEM;
+        negEspErr = -ESP_ERR_NO_MEM;
         gMutex = xSemaphoreCreateMutex();
         if (gMutex != NULL) {
             // Install PWM
-            espErr = ledc_fade_func_install(0);
+            negEspErr = -ledc_fade_func_install(0);
         }
     }
 
-    if (espErr == ESP_OK) {
+    if (negEspErr == ESP_OK) {
         printf(A_LOG_TAG "PWM driver initialised.\n");
     } else {
         // Clean up on error
@@ -286,16 +286,16 @@ esp_err_t aPwmInit()
             gMutex = NULL;
         }
         printf(A_LOG_TAG "unable to initialise PWM driver"
-                " (0x%02x)!\n", espErr);
+               " (0x%02x)!\n", (int) negEspErr);
     }
 
-    return espErr;
+    return negEspErr;
 }
 
 // Open a PWM.
 aPwm_t *pAPwmOpen(gpio_num_t pin, const char *pNameStr)
 {
-    esp_err_t espErr;
+    int32_t negEspErr;
     aPwm_t *pPwm = NULL;
     ledc_timer_config_t pwmTimerConfig = {.duty_resolution = A_PWM_RESOLUTION_BITS,
                                           .freq_hz = A_PWM_FREQUENCY_HERTZ,
@@ -313,9 +313,9 @@ aPwm_t *pAPwmOpen(gpio_num_t pin, const char *pNameStr)
     aPwm_t **ppTimer = NULL;
     aPwm_t **ppChannel = NULL;
 
-    A_PWM_LOCK(espErr);
+    A_PWM_LOCK(negEspErr);
 
-    espErr = ESP_ERR_NO_MEM;
+    negEspErr = -ESP_ERR_NO_MEM;
     // Allocate memory for the PWM
     pPwm = (aPwm_t *) malloc(sizeof(*pPwm));
     if (pPwm != NULL) {
@@ -327,11 +327,11 @@ aPwm_t *pAPwmOpen(gpio_num_t pin, const char *pNameStr)
             // Found one: allocate it to this PWM and configure the PWM timer
             *ppTimer = pPwm;
             pwmTimerConfig.timer_num = ppTimer - gpPwmTimerList;
-            espErr = ledc_timer_config(&pwmTimerConfig);
+            negEspErr = -ledc_timer_config(&pwmTimerConfig);
         }
-        if (espErr == ESP_OK) {
+        if (negEspErr == ESP_OK) {
             // Find a spare PWM channel
-            espErr = ESP_ERR_NO_MEM;
+            negEspErr = -ESP_ERR_NO_MEM;
             ppChannel = ppFindEntry(NULL, gpPwmChannelList,
                                     A_UTIL_ARRAY_COUNT(gpPwmChannelList));
             if (ppChannel != NULL) {
@@ -339,9 +339,9 @@ aPwm_t *pAPwmOpen(gpio_num_t pin, const char *pNameStr)
                 *ppChannel = pPwm;
                 pwmChannelConfig.channel = ppChannel - gpPwmChannelList;
                 pwmChannelConfig.timer_sel = pwmTimerConfig.timer_num;
-                espErr = ledc_channel_config(&pwmChannelConfig);
-                if (espErr == ESP_OK) {
-                    espErr = ESP_ERR_NO_MEM;
+                negEspErr = -ledc_channel_config(&pwmChannelConfig);
+                if (negEspErr == ESP_OK) {
+                    negEspErr = -ESP_ERR_NO_MEM;
                     // Create a semaphore which we will use to track whether
                     // a rate transition is active or not (otherwise we
                     // can't change rate reliably as a fade command is
@@ -352,32 +352,32 @@ aPwm_t *pAPwmOpen(gpio_num_t pin, const char *pNameStr)
                     if (gSemaphoreRateTransition[pwmChannelConfig.channel] != NULL) {
                         // Register a callback and pass it a pointer to the
                         // mutex so that it can be given by the callback
-                        espErr = ledc_cb_register(pwmChannelConfig.speed_mode,
-                                                  pwmChannelConfig.channel,
-                                                  &gPwmCallbacks,
-                                                  (void *) &(gSemaphoreRateTransition[pwmChannelConfig.channel]));
+                        negEspErr = -ledc_cb_register(pwmChannelConfig.speed_mode,
+                                                      pwmChannelConfig.channel,
+                                                      &gPwmCallbacks,
+                                                      (void *) &(gSemaphoreRateTransition[pwmChannelConfig.channel]));
                     }
                 }
             }
         }
-        if (espErr == ESP_OK) {
+        if (negEspErr == ESP_OK) {
             // Populate the name and add the PWM
             // to the linked list
-            espErr = ESP_ERR_NO_MEM;
+            negEspErr = -ESP_ERR_NO_MEM;
             pPwm->pNameStr = pNameStr;
             if (pPwm->pNameStr == NULL) {
                 pPwm->pNameStr = "no name";
             }
             // Add the PWM to the linked list
             if (aUtilLinkedListAdd(&gpPwmList, pPwm)) {
-                espErr = ESP_OK;
+                negEspErr = ESP_OK;
             }
         }
     }
 
     A_PWM_UNLOCK();
 
-    if (espErr < 0) {
+    if (negEspErr < 0) {
         // Clean up on error
         if (ppTimer != NULL) {
             pwmTimerConfig.deconfigure = true;
@@ -393,9 +393,9 @@ aPwm_t *pAPwmOpen(gpio_num_t pin, const char *pNameStr)
             gSemaphoreRateTransition[pwmChannelConfig.channel] = NULL;
         }
         free(pPwm);
-        gPwmOpenLastErrorCode = espErr;
+        gPwmOpenLastErrorCode = negEspErr;
         printf(A_LOG_TAG "unable to open PWM \"%s\", pin %d (0x%02x)!\n",
-                pNameStr, pin, espErr);
+               pNameStr, pin, (int) negEspErr);
     } else {
         printf(A_LOG_TAG "PWM \"%s\" opened, pin %d.\n", pPwm->pNameStr, pin);
     }
@@ -404,126 +404,126 @@ aPwm_t *pAPwmOpen(gpio_num_t pin, const char *pNameStr)
 }
 
 // Get the last error code from a failed call to pAPwmOpen().
-esp_err_t aPwmOpenLastErrorGetReset()
+int32_t aPwmOpenLastErrorGetReset()
 {
-    esp_err_t espErr = gPwmOpenLastErrorCode;
+    int32_t negEspErr = gPwmOpenLastErrorCode;
 
     gPwmOpenLastErrorCode = ESP_OK;
 
-    return espErr;
+    return negEspErr;
 }
 
 // Close a PWM.
 void aPwmClose(aPwm_t *pPwm)
 {
-    esp_err_t espErr;
+    int32_t negEspErr;
 
-    A_PWM_LOCK(espErr);
+    A_PWM_LOCK(negEspErr);
 
     pwmClose(pPwm);
 
     A_PWM_UNLOCK();
 
     // To prevent compiler warnings as we aren't returning espErr
-    (void) espErr;
+    (void) negEspErr;
 }
 
 // Set the rate of a PWM relative to its current rate.
 int32_t aPwmRateRelativeSet(aPwm_t *pPwm, int32_t percent)
 {
-    int32_t ratePercentOrEspErr;
+    int32_t ratePercentOrNegEspErr;
 
-    A_PWM_LOCK(ratePercentOrEspErr);
+    A_PWM_LOCK(ratePercentOrNegEspErr);
 
-    ratePercentOrEspErr = ESP_ERR_INVALID_ARG;
+    ratePercentOrNegEspErr = -ESP_ERR_INVALID_ARG;
     if (pPwm != NULL) {
         percent += (int32_t) pPwm->ratePercent;
-        ratePercentOrEspErr = setAndLimitRate(pPwm, percent);
+        ratePercentOrNegEspErr = setAndLimitRate(pPwm, percent);
     }
 
     A_PWM_UNLOCK();
 
-    return ratePercentOrEspErr;
+    return ratePercentOrNegEspErr;
 }
 
 // Set the rate of a PWM to an absolute value.
 int32_t aPwmRateAbsoluteSet(aPwm_t *pPwm, size_t percent)
 {
-    int32_t ratePercentOrEspErr;
+    int32_t ratePercentOrNegEspErr;
 
-    A_PWM_LOCK(ratePercentOrEspErr);
+    A_PWM_LOCK(ratePercentOrNegEspErr);
 
-    ratePercentOrEspErr = (int32_t) ESP_ERR_INVALID_ARG;
+    ratePercentOrNegEspErr = -ESP_ERR_INVALID_ARG;
     if (pPwm != NULL) {
-        ratePercentOrEspErr = setAndLimitRate(pPwm, percent);
+        ratePercentOrNegEspErr = setAndLimitRate(pPwm, percent);
     }
 
     A_PWM_UNLOCK();
 
-    return ratePercentOrEspErr;
+    return ratePercentOrNegEspErr;
 }
 
 // Get the current rate of a PWM.
 int32_t aPwmRateGet(aPwm_t *pPwm)
 {
-    int32_t ratePercentOrEspErr;
+    int32_t ratePercentOrNegEspErr;
 
-    A_PWM_LOCK(ratePercentOrEspErr);
+    A_PWM_LOCK(ratePercentOrNegEspErr);
 
-    ratePercentOrEspErr = (int32_t) ESP_ERR_INVALID_ARG;
+    ratePercentOrNegEspErr = -ESP_ERR_INVALID_ARG;
     if (pPwm != NULL) {
-        ratePercentOrEspErr = (int32_t) pPwm->ratePercent;
+        ratePercentOrNegEspErr = (int32_t) pPwm->ratePercent;
     }
 
     A_PWM_UNLOCK();
 
-    return ratePercentOrEspErr;
+    return ratePercentOrNegEspErr;
 }
 
 // Set the transition time for a rate change.
 int32_t aPwmRateTransitionTimeSet(aPwm_t *pPwm, size_t timeMs)
 {
-    int32_t timeMsOrEspErr;
+    int32_t timeMsOrNegEspErr;
 
-    A_PWM_LOCK(timeMsOrEspErr);
+    A_PWM_LOCK(timeMsOrNegEspErr);
 
-    timeMsOrEspErr = (int32_t) ESP_ERR_INVALID_ARG;
+    timeMsOrNegEspErr = -ESP_ERR_INVALID_ARG;
     if (pPwm != NULL) {
         pPwm->rateTransitionTimeMs = timeMs;
-        timeMsOrEspErr = (int32_t) pPwm->rateTransitionTimeMs;
+        timeMsOrNegEspErr = (int32_t) pPwm->rateTransitionTimeMs;
         printf(A_LOG_TAG "PWM \"%s\" transition time set to %d ms.\n",
-               pPwm->pNameStr, (int) timeMsOrEspErr);
+               pPwm->pNameStr, (int) timeMsOrNegEspErr);
     }
 
     A_PWM_UNLOCK();
 
-    return timeMsOrEspErr;
+    return timeMsOrNegEspErr;
 }
 
 // Get the transition time for a rate change.
 int32_t aPwmRateTransitionTimeGet(aPwm_t *pPwm)
 {
-    int32_t timeMsOrEspErr;
+    int32_t timeMsOrNegEspErr;
 
-    A_PWM_LOCK(timeMsOrEspErr);
+    A_PWM_LOCK(timeMsOrNegEspErr);
 
-    timeMsOrEspErr = (int32_t) ESP_ERR_INVALID_ARG;
+    timeMsOrNegEspErr = -ESP_ERR_INVALID_ARG;
     if (pPwm != NULL) {
-        timeMsOrEspErr = (int32_t) pPwm->rateTransitionTimeMs;
+        timeMsOrNegEspErr = (int32_t) pPwm->rateTransitionTimeMs;
     }
 
     A_PWM_UNLOCK();
 
-    return timeMsOrEspErr;
+    return timeMsOrNegEspErr;
 }
 
 // Deinitialise PWM and free resources.
 void aPwmDeinit()
 {
-    esp_err_t espErr;
+    int32_t negEspErr;
     aPwm_t *pPwm;
 
-    A_PWM_LOCK(espErr);
+    A_PWM_LOCK(negEspErr);
 
     // Free each PWM
     do {
@@ -544,8 +544,8 @@ void aPwmDeinit()
         gMutex = NULL;
     }
 
-    // To prevent compiler warnings as we aren't returning espErr
-    (void) espErr;
+    // To prevent compiler warnings as we aren't returning negEspErr
+    (void) negEspErr;
 }
 
 // End of file
